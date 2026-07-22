@@ -54,16 +54,17 @@ export class UI {
       el.className = 'slot';
       el.dataset.idx = i;
       el.innerHTML = `<span class="kb">${i < 9 ? i + 1 : i === 9 ? '0' : ''}</span><span class="fist hidden">✊</span><img class="pix" draggable="false"><span class="cnt"></span>`;
-      this._dragSource(el, () => this._hb && this._hb[i] && (this._hb[i].sword || this._hb[i].res) ? { fromIdx: i, ...this._hb[i] } : null, () => this.onSelect && this.onSelect(i));
+      this._dragSource(el, () => this._hb && this._hb[i] && (this._hb[i].sword || this._hb[i].res || this._hb[i].tool) ? { fromIdx: i, ...this._hb[i] } : null, () => this.onSelect && this.onSelect(i));
       bar.appendChild(el);
       this.slotEls.push(el);
     }
     this._hbBuilt = true;
   }
 
-  setHotbar(hotbar, inv, sel, sword) {
+  setHotbar(hotbar, inv, sel, sword, axe = 0, pick = 0) {
     if (!this._hbBuilt) this.buildHotbar(hotbar.length);
     this._hb = hotbar;
+    this._tiers = { sword, axe, pick };
     hotbar.forEach((slot, i) => {
       const el = this.slotEls[i];
       const img = el.querySelector('img');
@@ -72,7 +73,21 @@ export class UI {
       el.classList.toggle('sel', i === sel);
       fist.classList.add('hidden');
       img.classList.remove('hidden');
-      if (slot.sword) {
+      if (slot.tool) {
+        const tier = slot.tool === 'axe' ? axe : pick;
+        if (tier > 0) {
+          img.src = icon(TOOL[slot.tool].icons[tier]);
+          img.style.opacity = ''; img.style.filter = '';
+          cnt.textContent = TIER_NAME[tier];
+          el.title = TIER_NAME[tier] + (slot.tool === 'axe' ? 'yxa' : 'hacka');
+        } else {
+          img.src = icon(TOOL[slot.tool].icons[1]);
+          img.style.opacity = '0.3'; img.style.filter = 'grayscale(1)';
+          cnt.textContent = '';
+          el.title = 'Ingen ' + TOOL[slot.tool].name.toLowerCase() + ' än — crafta (E)!';
+        }
+        el.classList.remove('empty');
+      } else if (slot.sword) {
         if (sword > 0) {
           img.src = icon(SWORD[sword].icon);
           img.style.opacity = ''; img.style.filter = '';
@@ -118,17 +133,19 @@ export class UI {
     eq.innerHTML = '';
     const items = [
       { label: 'Svärd', cur: sword, icons: SWORD.map((s) => s.icon), names: SWORD.map((s) => s.name), drag: { sword: true } },
-      { label: 'Yxa', cur: axe, icons: TOOL.axe.icons, names: TIER_NAME.map((t) => t ? t + 'yxa' : 'Ingen yxa') },
-      { label: 'Hacka', cur: pick, icons: TOOL.pick.icons, names: TIER_NAME.map((t) => t ? t + 'hacka' : 'Ingen hacka') },
+      { label: 'Yxa', cur: axe, icons: TOOL.axe.icons, names: TIER_NAME.map((t) => t ? t + 'yxa' : 'Ingen yxa'), drag: { tool: 'axe' } },
+      { label: 'Hacka', cur: pick, icons: TOOL.pick.icons, names: TIER_NAME.map((t) => t ? t + 'hacka' : 'Ingen hacka'), drag: { tool: 'pick' } },
     ];
     for (const it of items) {
       const el = document.createElement('div');
-      el.className = 'invItem eq' + (it.cur === 0 ? ' dim' : '');
+      el.className = 'invItem eq' + (it.cur === 0 ? ' dim' : ' placeable');
       el.innerHTML = it.cur > 0
         ? `<img class="pix" src="${icon(it.icons[it.cur])}"><span>${it.names[it.cur]}</span><span class="n">✔</span>`
         : `<span style="font-size:20px">${it.label === 'Svärd' ? '✊' : '✖'}</span><span>${it.names[0]}</span><span class="n" style="color:#8fa0c8">crafta!</span>`;
-      el.title = it.label + (it.cur > 0 ? ': ' + it.names[it.cur] : ' saknas — öppna Tillverka (E)');
-      if (it.drag && it.cur > 0) this._dragSource(el, () => it.drag, null);
+      el.title = it.cur > 0
+        ? it.names[it.cur] + ' — dra till baren för att ha den i handen!'
+        : it.label + ' saknas — öppna Tillverka (E)';
+      if (it.drag && it.cur > 0) this._dragSource(el, () => ({ ...it.drag }), null);
       eq.appendChild(el);
     }
   }
@@ -164,9 +181,10 @@ export class UI {
   _ghostStart(payload, e) {
     const g = document.createElement('img');
     g.className = 'dragGhost pix';
-    g.src = payload.sword !== undefined && !payload.res
-      ? icon('svard_tra')
-      : icon(RES[payload.res]?.icon || 'planka');
+    const t = this._tiers || { sword: 1, axe: 1, pick: 1 };
+    if (payload.tool) g.src = icon(TOOL[payload.tool].icons[Math.max(1, t[payload.tool])]);
+    else if (payload.sword) g.src = icon(SWORD[Math.max(1, t.sword)].icon);
+    else g.src = icon(RES[payload.res]?.icon || 'planka');
     document.body.appendChild(g);
     this._ghost = g;
     this._ghostMove(e);

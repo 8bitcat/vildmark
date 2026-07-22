@@ -83,7 +83,10 @@ export class Input {
       }
     });
     this.canvas.addEventListener('mousemove', (e) => {
-      if (this.locked) { this.lookDX += e.movementX; this.lookDY += e.movementY; }
+      if (this.locked && Number.isFinite(e.movementX) && Number.isFinite(e.movementY)) {
+        this.lookDX += e.movementX;
+        this.lookDY += e.movementY;
+      }
     });
     this.canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;

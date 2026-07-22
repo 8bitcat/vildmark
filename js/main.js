@@ -86,6 +86,11 @@ ui.onAssign = (idx, payload) => {
     const old = hb[idx];
     hb[idx] = { sword: true };
     if (j >= 0 && j !== idx) hb[j] = old.sword ? {} : old;
+  } else if (payload.tool) {
+    const j = hb.findIndex((s) => s.tool === payload.tool);
+    const old = hb[idx];
+    hb[idx] = { tool: payload.tool };
+    if (j >= 0 && j !== idx) hb[j] = old.tool === payload.tool ? {} : old;
   } else {
     if (!PLACE[payload.res]) { ui.toast('Det går inte att bygga med ' + RES[payload.res].name); return; }
     const j = hb.findIndex((s) => s.res === payload.res);
@@ -223,7 +228,7 @@ function dropRemote(id) {
 
 // ---------- HUD ----------
 function refreshHud() {
-  ui.setHotbar(player.hotbar, player.inv, player.sel, player.sword);
+  ui.setHotbar(player.hotbar, player.inv, player.sel, player.sword, player.axe, player.pick);
   ui.setHearts(Math.max(0, player.hp));
   ui.updateCraft(player.inv, player.sword, player.axe, player.pick);
   ui.setCoins(player.inv.mynt || 0);
@@ -387,16 +392,14 @@ function updateHeld(dt) {
   heldT += dt;
   heldSwing = Math.max(0, heldSwing - dt * 5);
   // what to show: tool matching the mined block > selected sword > selected block > fist
+  // the hand shows exactly what is in the selected slot — no surprise swaps
   let key = 'fist';
   const slot = player.hotbar[player.sel] || {};
-  if (input.mine && mineTarget) {
-    const id = world.getBlock(...mineTarget.split(',').map(Number));
-    const def = DEF[id];
-    if (def?.tool === 'axe' && player.axe > 0) key = 'icon:' + TOOL.axe.icons[player.axe];
-    else if (def?.tool === 'pick' && player.pick > 0) key = 'icon:' + TOOL.pick.icons[player.pick];
-    else if (slot.sword && player.sword > 0) key = 'icon:' + SWORD[player.sword].icon;
-  } else if (slot.sword) {
+  if (slot.sword) {
     key = player.sword > 0 ? 'icon:' + SWORD[player.sword].icon : 'fist';
+  } else if (slot.tool) {
+    const tier = slot.tool === 'axe' ? player.axe : player.pick;
+    key = tier > 0 ? 'icon:' + TOOL[slot.tool].icons[tier] : 'fist';
   } else if (slot.res && (player.inv[slot.res] || 0) > 0) {
     key = 'block:' + slot.res;
   }

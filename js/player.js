@@ -15,7 +15,7 @@ export function loadHotbar() {
   try {
     const raw = JSON.parse(localStorage.getItem('vildmark_hotbar_v1'));
     if (!Array.isArray(raw) || raw.length !== HOTBAR.length) return HOTBAR.map((s) => ({ ...s }));
-    return raw.map((s) => (s && (s.sword || typeof s.res === 'string')) ? { ...s } : {});
+    return raw.map((s) => (s && (s.sword || s.tool === 'axe' || s.tool === 'pick' || typeof s.res === 'string')) ? { ...s } : {});
   } catch { return HOTBAR.map((s) => ({ ...s })); }
 }
 
@@ -45,9 +45,17 @@ export class Player {
   eye() { return new THREE.Vector3(this.pos.x, this.pos.y + EYE, this.pos.z); }
 
   applyLook(dx, dy, sens = 0.0024) {
+    // sanitize: pointer-lock can emit NaN/huge spikes — without this the view
+    // gets stuck forever (NaN propagates through every later frame)
+    if (!Number.isFinite(dx)) dx = 0;
+    if (!Number.isFinite(dy)) dy = 0;
+    dx = Math.max(-400, Math.min(400, dx));
+    dy = Math.max(-400, Math.min(400, dy));
     this.yaw -= dx * sens;
     this.pitch -= dy * sens;
-    this.pitch = Math.max(-1.55, Math.min(1.55, this.pitch));
+    if (!Number.isFinite(this.yaw)) this.yaw = 0;
+    if (!Number.isFinite(this.pitch)) this.pitch = 0;
+    this.pitch = Math.max(-1.53, Math.min(1.53, this.pitch));
   }
 
   dir() {
@@ -57,6 +65,15 @@ export class Player {
 
   update(dt, input, sfx) {
     if (this.dead) return;
+    // self-heal if physics ever produced invalid numbers
+    if (!Number.isFinite(this.pos.x) || !Number.isFinite(this.pos.y) || !Number.isFinite(this.pos.z)) {
+      console.warn('VILDMARK: ogiltig position — återställer');
+      this.pos.set(0.5, this.world.surfaceY(0, 0) + 0.5, 0.5);
+      this.vel.set(0, 0, 0);
+    }
+    if (!Number.isFinite(this.vel.x) || !Number.isFinite(this.vel.y) || !Number.isFinite(this.vel.z)) this.vel.set(0, 0, 0);
+    if (!Number.isFinite(this.pitch)) this.pitch = 0;
+    if (!Number.isFinite(this.yaw)) this.yaw = 0;
     const w = this.world;
     dt = Math.min(dt, 0.05);
     this.bounceCd = Math.max(0, this.bounceCd - dt);
