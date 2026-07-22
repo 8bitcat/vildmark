@@ -69,6 +69,7 @@ const input = new Input(canvas, {
   onPauseRequest: () => { if (running && !uiOpen) showPause(); },
   onEat: () => eatApple(),
   onInteract: () => tryInteract(),
+  onManual: () => toggleManual(),
 });
 ui.onHotbarTap = (i) => { if (player) { player.sel = i; refreshHud(); } };
 
@@ -215,7 +216,8 @@ function ensureCrack() {
   if (crackMesh) return;
   const geo = new THREE.BoxGeometry(1.004, 1.004, 1.004);
   const tex = atlasTex.clone();
-  tex.repeat.set(1 / 8, 1 / 4);
+  const o = tileOffset(CRACK_TILES[0]);
+  tex.repeat.set(o.ru, o.rv);
   tex.needsUpdate = true;
   crackMesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
   crackMesh.visible = false;
@@ -225,8 +227,8 @@ function ensureCrack() {
 function setCrack(x, y, z, stage) {
   ensureCrack();
   if (stage < 0) { crackMesh.visible = false; return; }
-  const tile = CRACK_TILES[Math.min(2, stage)];
-  crackMesh.material.map.offset.set((tile % 8) / 8, 1 - (Math.floor(tile / 8) + 1) / 4);
+  const o = tileOffset(CRACK_TILES[Math.min(2, stage)]);
+  crackMesh.material.map.offset.set(o.u, o.v);
   crackMesh.position.set(x + 0.5, y + 0.5, z + 0.5);
   crackMesh.visible = true;
 }
@@ -277,16 +279,26 @@ function tryMine(dt) {
 }
 
 // ---------- first-person held item ----------
+// held items render ON TOP of the world (no depth test) so the hand never
+// disappears inside the block you are hitting
+function overlayMat(opts) {
+  const m = new THREE.MeshBasicMaterial(opts);
+  m.depthTest = false;
+  m.depthWrite = false;
+  return m;
+}
+
 function heldIconMesh(iconName) {
   const tex = new THREE.TextureLoader().load('assets/icons/' + iconName + '.png');
   tex.magFilter = THREE.NearestFilter;
   tex.minFilter = THREE.NearestFilter;
   tex.colorSpace = THREE.SRGBColorSpace;
   const m = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.34, 0.34),
-    new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+    new THREE.PlaneGeometry(0.44, 0.44),
+    overlayMat({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
   );
   m.rotation.y = -0.5;
+  m.renderOrder = 999;
   return m;
 }
 
@@ -300,17 +312,28 @@ function heldBlockMesh(res) {
     tex.repeat.set(o.ru, o.rv);
     tex.offset.set(o.u, o.v);
     tex.needsUpdate = true;
-    mats6.push(new THREE.MeshBasicMaterial({ map: tex }));
+    mats6.push(overlayMat({ map: tex }));
   }
-  const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), mats6);
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.26), mats6);
   m.rotation.y = 0.6;
+  m.renderOrder = 999;
   return m;
 }
 
 function heldFistMesh() {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.2), new THREE.MeshBasicMaterial({ color: 0xe2ba94 }));
-  m.rotation.z = 0.3;
-  return m;
+  const g = new THREE.Group();
+  const skin = overlayMat({ color: 0xe2ba94 });
+  const sleeve = overlayMat({ color: 0x8a6a4a });
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.13, 0.34), sleeve);
+  arm.position.set(0.05, -0.06, 0.14);
+  arm.renderOrder = 999;
+  const hand = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.14, 0.16), skin);
+  hand.position.set(0, 0, -0.1);
+  hand.renderOrder = 999;
+  g.add(arm, hand);
+  g.rotation.z = 0.25;
+  g.rotation.y = -0.3;
+  return g;
 }
 
 function updateHeld(dt) {
@@ -625,6 +648,19 @@ function toggleCraft() {
   } else {
     ui.hide('craftPanel');
     input.requestLock();
+  }
+}
+
+let manualOpen = false;
+function toggleManual() {
+  if (manualOpen) {
+    manualOpen = false;
+    ui.hide('manualPanel');
+    if (running) { uiOpen = false; input.requestLock(); }
+  } else {
+    manualOpen = true;
+    ui.show('manualPanel');
+    if (running) { uiOpen = true; if (!input.isTouch) document.exitPointerLock?.(); }
   }
 }
 
@@ -1001,6 +1037,11 @@ function commonStart() {
   lastNight = phaseOf(wt).isNight;
   world.winterIce = lastSeason === 3;
   if (!input.isTouch) setTimeout(() => input.requestLock(), 100);
+  // first time playing? open the handbook
+  if (!localStorage.getItem('vildmark_manual_seen')) {
+    localStorage.setItem('vildmark_manual_seen', '1');
+    setTimeout(() => { if (!manualOpen) toggleManual(); }, 800);
+  }
 }
 
 async function startHost(save) {
@@ -1347,6 +1388,9 @@ $('btnLeave').addEventListener('click', () => {
 });
 $('btnCloseCraft').addEventListener('click', () => toggleCraft());
 $('btnCloseVill').addEventListener('click', () => { ui.hideDialog(); uiOpen = false; input.requestLock(); });
+$('btnManualMenu').addEventListener('click', () => toggleManual());
+$('btnManualHud').addEventListener('click', () => toggleManual());
+$('btnCloseManual').addEventListener('click', () => toggleManual());
 $('btnQR').addEventListener('click', () => { uiOpen = true; ui.show('qrBox'); if (!input.isTouch) document.exitPointerLock?.(); });
 $('btnCloseQR').addEventListener('click', () => { uiOpen = false; ui.hide('qrBox'); input.requestLock(); });
 addEventListener('pagehide', () => { if (isHost && running) doSave(false); });
@@ -1382,6 +1426,8 @@ window.__VILL = () => ({ list: villagers?.list, stations: villagers ? [...villag
 window.__ORDER = (vid, k) => hostOrder('local', vid, k);
 window.__MENU = (vid) => villagers?.menu(vid);
 window.__COLLECT = () => collectStorage('local');
+window.__P = () => player;
+window.__INPUT = () => input;
 window.__CRAFT = (id) => { const r = RECIPES.find((x) => x.id === id); if (r) tryCraft(r); };
 window.__PLACE = (x, y, z, res) => {
   if ((player.inv[res] || 0) <= 0) return 'no ' + res;

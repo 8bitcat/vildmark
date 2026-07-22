@@ -48,6 +48,7 @@ export class Input {
       if (e.code === 'KeyE') this.cb.onToggleCraft();
       if (e.code === 'KeyQ') this.cb.onEat();
       if (e.code === 'KeyF') this.cb.onInteract();
+      if (e.code === 'KeyH') this.cb.onManual();
       this._updMove();
     });
     addEventListener('keyup', (e) => {
@@ -153,6 +154,7 @@ export class Input {
     hold('btnMine', () => { this.mine = true; }, () => { this.mine = false; });
     hold('btnPlace', () => { this._placeEdge = true; });
     hold('btnTalk', () => this.cb.onInteract());
+    hold('btnBookT', () => this.cb.onManual());
     hold('btnJump', () => { this.jump = true; }, () => { this.jump = false; });
     hold('btnCraftT', () => this.cb.onToggleCraft());
     hold('btnEatT', () => this.cb.onEat());

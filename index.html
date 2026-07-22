@@ -110,6 +110,14 @@
   .row2 { display: flex; gap: 10px; }
   .row2 .mbtn { flex: 1; }
   .hint { font-size: 12px; color: #8fa0c8; text-align: center; margin-top: 10px; line-height: 1.6; }
+  .manual h3 { color: #9fe86a; margin: 16px 0 6px; font-size: 17px; }
+  .manual p, .manual li { font-size: 14px; color: #c8d0e4; line-height: 1.55; }
+  .manual ul { padding-left: 20px; margin: 4px 0; }
+  .manual img.pix { width: 20px; height: 20px; vertical-align: -5px; }
+  .manual table { border-collapse: collapse; width: 100%; margin: 6px 0; }
+  .manual td, .manual th { border: 1px solid #33406b; padding: 5px 8px; font-size: 13px; text-align: left; color: #c8d0e4; }
+  .manual th { color: #ffd34d; }
+  .manual .steg { background: #0d1428; border: 1px solid #33406b; border-radius: 10px; padding: 8px 12px; margin: 6px 0; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
@@ -126,6 +134,7 @@
     <div class="chip" id="clock"><span id="seasonName">Vår</span> · Dag <span id="dayNum">1</span> <span id="clockIcon">☀️</span></div>
     <div class="chip" id="coinBox"><img src="assets/icons/mynt.png" class="pix" style="width:18px;height:18px;vertical-align:-4px"> <b id="coinCnt">0</b></div>
     <div class="chip" id="roomBox">Kod: <b id="roomCode">----</b> <button id="btnQR" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer">Bjud in</button></div>
+    <div class="chip" id="bookBox"><button id="btnManualHud" style="padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer;pointer-events:auto">📖 Handbok</button></div>
     <div id="playersBox"></div>
   </div>
   <div id="interactHint" class="hidden" style="position:absolute;bottom:150px;left:50%;transform:translateX(-50%);background:rgba(10,16,32,.8);border:1px solid #ffd34d;border-radius:8px;padding:4px 14px;font-size:14px;color:#ffd34d"></div>
@@ -145,6 +154,7 @@
   <div id="btnCraftT" class="tbtn small">🛠️</div>
   <div id="btnEatT" class="tbtn small">🍎</div>
   <div id="btnPauseT" class="tbtn small">⏸️</div>
+  <div id="btnBookT" class="tbtn small" style="right:14px;top:198px">📖</div>
 </div>
 
 <!-- main menu -->
@@ -156,6 +166,7 @@
     <button class="mbtn" id="btnContinue">💾 Fortsätt värld</button>
     <button class="mbtn" id="btnJoinMenu">🤝 Gå med hos någon</button>
     <button class="mbtn" id="btnImport">📥 Importera värld</button>
+    <button class="mbtn" id="btnManualMenu">📖 Handbok — så spelar ni</button>
     <p class="hint">Samla trä, sten och kol · Bygg en bas runt din Hjärtsten<br>Försvara den mot vättar och troll om natten · Årstiderna växlar — sjön fryser på vintern!</p>
   </div>
 </div>
@@ -231,6 +242,75 @@
     <img id="qrImg" width="200" height="200" alt="QR">
     <p class="link" id="qrLink"></p>
     <button class="mbtn" id="btnCloseQR">Stäng</button>
+  </div>
+</div>
+
+<div id="manualPanel" class="overlay hidden">
+  <div class="panel manual" style="width:min(560px,94vw)">
+    <h2 style="margin-bottom:4px">📖 Handbok</h2>
+    <p class="sub" style="margin-bottom:6px">Så spelar ni VILDMARK — steg för steg</p>
+
+    <h3>1. Så börjar ni 🌲</h3>
+    <div class="steg"><b>Steg 1:</b> Gå till ett träd och <b>håll in</b> vänster musknapp (⛏️ på mobil) på stammen. Det går långsamt med händerna — men snart har du <img class="pix" src="assets/icons/stock.png"> <b>Stock</b>!</div>
+    <div class="steg"><b>Steg 2:</b> Öppna <b>Tillverka</b> (E eller 🛠️) och gör <b>4 Plankor</b> av stocken.</div>
+    <div class="steg"><b>Steg 3:</b> Gör en <img class="pix" src="assets/icons/yxa_tra.png"> <b>Träyxa</b> (hugger 3× snabbare) och en <img class="pix" src="assets/icons/hacka_tra.png"> <b>Trähacka</b> — utan hacka kan du inte bryta sten alls!</div>
+    <div class="steg"><b>Steg 4:</b> Bryt sten med hackan → gör <img class="pix" src="assets/icons/svard_tra.png"> <b>svärd</b> och bygg <b>stenmur</b> runt huset innan natten!</div>
+
+    <h3>2. Verktygsstegen 🪜</h3>
+    <ul>
+      <li>✋ <b>Händer</b> — jord, sand, löv. Träd går men läääängesamt.</li>
+      <li>🪵 <b>Träverktyg</b> (3 plankor) — hackan låser upp <b>sten</b> och <b>kol</b></li>
+      <li>🪨 <b>Stenverktyg</b> (sten + plankor) — hackan låser upp <b>järn</b> (djupt i berget!)</li>
+      <li>⚙️ <b>Järnverktyg</b> — snabbast och bäst. Järnsvärd gör 13 i skada!</li>
+    </ul>
+
+    <h3>3. Natten kommer 🌙</h3>
+    <ul>
+      <li>När solen går ner anfaller <b>vättarna</b> byn — de jagar er, byborna och <img class="pix" src="assets/icons/hjartsten.png"> <b>Hjärtstenen</b> i starthuset</li>
+      <li>Monster <b>gnager sönder block</b> — stenmur håller mycket längre än jord och plankor!</li>
+      <li>Gör <img class="pix" src="assets/icons/fackla.png"> <b>facklor</b> (planka + kol) och lys upp basen</li>
+      <li>Dag 2 kommer <b>trollen</b> 👹 och dag 5 <b>vätteskyttarna</b> — bygg högre murar!</li>
+      <li>Om du dör: respawn vid Hjärtstenen efter 5 sek. Du tappar inget.</li>
+    </ul>
+
+    <h3>4. Byn & bybor 🏘️</h3>
+    <ul>
+      <li>Monster släpper <img class="pix" src="assets/icons/mynt.png"> <b>mynt</b> — köp bybor av <b>Byäldste Ragnar</b> (20 mynt). Prata med F eller 💬.</li>
+      <li><b>Jobb kräver hus:</b> tillverka en arbetsstation och bygg <b>tak över den</b> — annars säger bybon åt dig att bygga ett hus först!</li>
+      <li><img class="pix" src="assets/icons/huggbank.png"> Skogshuggarbänk → bybon samlar <b>stock</b> · <img class="pix" src="assets/icons/odling.png"> Odlingslåda → <b>äpplen</b> · <img class="pix" src="assets/icons/gruvstation.png"> Gruvstation → <b>sten/kol/järn</b> · <img class="pix" src="assets/icons/vaktpost.png"> Vaktpost → <b>vakten slåss!</b></li>
+      <li>Allt de samlar hamnar i <img class="pix" src="assets/icons/kista.png"> <b>förrådskistan</b> i starthuset — öppna med F/💬</li>
+      <li><b>Ge uppdrag</b> — prata med en bybo: <i>jobba · följ med mig · stanna här · gå hem</i>. En vakt som följer med är en livvakt!</li>
+    </ul>
+
+    <h3>5. Årstider 🍂❄️</h3>
+    <ul>
+      <li>3 dagar per årstid: Vår → Sommar → Höst → Vinter</li>
+      <li>På <b>vintern fryser sjön</b> — gå på isen (halt!). Nätterna blir längre.</li>
+      <li>Ät <img class="pix" src="assets/icons/apple.png"> äpplen (Q eller 🍎) för att läka — hugg löv så trillar de ut ibland</li>
+      <li>Kul: <img class="pix" src="assets/icons/gooblock.png"> Vätteblock (4 slem) är studsiga — bygg en studsmatta!</li>
+    </ul>
+
+    <h3>6. Spela tillsammans 🤝</h3>
+    <ul>
+      <li>Tryck <b>Bjud in</b> uppe i mitten — familjen skannar QR-koden eller skriver in koden under "Gå med hos någon"</li>
+      <li>Världen sparas automatiskt hos värden. Fortsätt via "Fortsätt värld" — bybor, hus och era prylar finns kvar (var och en hittas via sitt namn)</li>
+    </ul>
+
+    <h3>7. Kontroller 🎮</h3>
+    <table>
+      <tr><th></th><th>Dator</th><th>Mobil</th></tr>
+      <tr><td>Gå / titta</td><td>WASD + mus</td><td>joystick + dra höger sida</td></tr>
+      <tr><td>Bryt / attackera</td><td>vänster musknapp (håll)</td><td>⛏️ (håll)</td></tr>
+      <tr><td>Placera block</td><td>höger musknapp</td><td>🧱</td></tr>
+      <tr><td>Hoppa</td><td>mellanslag</td><td>⬆️</td></tr>
+      <tr><td>Hotbar</td><td>1–9 / scrollhjul</td><td>tryck på rutan</td></tr>
+      <tr><td>Tillverka</td><td>E</td><td>🛠️</td></tr>
+      <tr><td>Prata / öppna kista</td><td>F</td><td>💬</td></tr>
+      <tr><td>Ät äpple</td><td>Q</td><td>🍎</td></tr>
+      <tr><td>Handbok</td><td>H</td><td>📖</td></tr>
+    </table>
+
+    <button class="mbtn primary" id="btnCloseManual" style="margin-top:12px">Nu spelar vi!</button>
   </div>
 </div>
 
