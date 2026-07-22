@@ -217,21 +217,19 @@ export class Villagers {
         }
       }
 
-      // guard combat
-      if (p.combat && v.atk <= 0) {
+      // guard combat — keep chasing even while the attack recharges
+      if (p.combat) {
         let tgt = null, td = p.combat.aggro;
         for (const m of ctx.mobs.list) {
           const d = Math.hypot(m.x - v.x, m.z - v.z);
           if (d < td) { td = d; tgt = m; }
         }
         if (tgt) {
-          if (td > 1.7) { goal = tgt; speed = 3.4; }
-          else {
+          if (td > 1.6) { goal = tgt; speed = 3.4; }
+          else if (v.atk <= 0) {
             v.atk = p.combat.cd;
             const l = Math.hypot(tgt.x - v.x, tgt.z - v.z) || 1;
             ctx.mobs.hit(tgt.id, p.combat.dmg, (tgt.x - v.x) / l, (tgt.z - v.z) / l);
-            const mm = ctx.mobs.list.find((q) => q.id === tgt.id);
-            if (mm) mm.lastHit = mm.lastHit || null; // guard kills give no player loot
             ctx.cb.sfx('mobhit', v.x, v.y, v.z);
           }
         }
