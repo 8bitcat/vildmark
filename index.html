@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>VILDMARK — bygg, samla, försvara</title>
+<link rel="icon" href="assets/favicon.png">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1226; font-family: 'Segoe UI', system-ui, sans-serif; color: #e8ecf4; }
+  canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  .hidden { display: none !important; }
+  img.pix { image-rendering: pixelated; }
+
+  #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 22px; color: #fff; text-shadow: 0 0 4px #000; pointer-events: none; z-index: 5; }
+  #dmgFlash { position: fixed; inset: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(220,30,30,.55)); opacity: 0; pointer-events: none; transition: opacity .12s; z-index: 8; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #topbar { position: absolute; top: max(8px, env(safe-area-inset-top)); left: 0; right: 0; display: flex; justify-content: center; gap: 14px; align-items: center; flex-wrap: wrap; padding: 0 10px; }
+  .chip { background: rgba(10,16,32,.72); border: 1px solid #2c3a58; border-radius: 10px; padding: 5px 12px; font-size: 14px; }
+  #roomBox button { pointer-events: auto; }
+  #playersBox { display: flex; gap: 6px; }
+  .ptag { padding: 3px 8px; border-radius: 8px; font-size: 12px; background: rgba(10,16,32,.72); border: 1px solid #444; }
+
+  #heartBar { position: absolute; top: 52px; left: 50%; transform: translateX(-50%); width: 240px; background: rgba(10,16,32,.72); border: 1px solid #7c2740; border-radius: 8px; padding: 4px 8px; font-size: 12px; text-align: center; }
+  #heartFill { height: 8px; background: linear-gradient(90deg, #e23a4e, #ff7a8a); border-radius: 4px; margin-bottom: 2px; transition: width .3s; }
+
+  #hearts { position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
+  #hearts img { width: 22px; height: 22px; }
+
+  #hotbar { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 5px; pointer-events: auto; }
+  .slot { width: 52px; height: 52px; background: rgba(10,16,32,.75); border: 2px solid #3a4568; border-radius: 9px; position: relative; display: flex; align-items: center; justify-content: center; }
+  .slot.sel { border-color: #ffd34d; box-shadow: 0 0 10px rgba(255,211,77,.5); }
+  .slot img { width: 38px; height: 38px; }
+  .slot .cnt { position: absolute; right: 3px; bottom: 1px; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+  .slot .kb { position: absolute; left: 4px; top: 2px; font-size: 9px; color: #8fa0c8; }
+  .slot.empty img { opacity: .25; filter: grayscale(.8); }
+
+  #toasts { position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .toast { background: rgba(10,16,32,.85); border: 1px solid #3a4568; border-radius: 8px; padding: 5px 14px; font-size: 14px; animation: fadeup 3s forwards; }
+  @keyframes fadeup { 0% { opacity: 0; transform: translateY(8px); } 10% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; } }
+  #bigMsg { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); font-size: clamp(22px, 4vw, 40px); font-weight: 800; text-shadow: 0 2px 12px #000, 0 0 30px rgba(255,60,60,.4); white-space: nowrap; animation: bigpulse 4s forwards; }
+  @keyframes bigpulse { 0% { opacity: 0; transform: translateX(-50%) scale(.8); } 12% { opacity: 1; transform: translateX(-50%) scale(1.05); } 20% { transform: translateX(-50%) scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+  /* ---------- touch ---------- */
+  #touchUI { position: fixed; inset: 0; z-index: 9; pointer-events: none; }
+  #lookZone { position: absolute; right: 0; top: 0; width: 55%; height: 100%; pointer-events: auto; }
+  #joyZone { position: absolute; left: 12px; bottom: 90px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255,255,255,.08); border: 2px solid rgba(255,255,255,.2); pointer-events: auto; }
+  #joyKnob { position: absolute; left: 50%; top: 50%; margin: -26px 0 0 -26px; width: 52px; height: 52px; border-radius: 50%; background: rgba(255,255,255,.28); border: 2px solid rgba(255,255,255,.4); }
+  .tbtn { position: absolute; width: 62px; height: 62px; border-radius: 50%; background: rgba(10,16,32,.6); border: 2px solid rgba(255,255,255,.3); display: flex; align-items: center; justify-content: center; font-size: 26px; pointer-events: auto; }
+  .tbtn:active { background: rgba(255,211,77,.4); }
+  #btnMine { right: 18px; bottom: 150px; }
+  #btnPlace { right: 96px; bottom: 96px; }
+  #btnJump { right: 18px; bottom: 76px; }
+  .tbtn.small { width: 44px; height: 44px; font-size: 18px; }
+  #btnCraftT { right: 14px; top: 90px; }
+  #btnEatT { right: 14px; top: 144px; }
+  #btnPauseT { right: 14px; top: 36px; }
+
+  /* ---------- menus ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(6,10,22,.88); display: flex; align-items: center; justify-content: center; z-index: 20; }
+  .panel { background: #131b33; border: 2px solid #33406b; border-radius: 16px; padding: 26px 30px; width: min(480px, 92vw); max-height: 88vh; overflow-y: auto; box-shadow: 0 12px 50px rgba(0,0,0,.6); }
+  h1.logo { font-size: clamp(38px, 8vw, 64px); letter-spacing: 6px; font-weight: 900; text-align: center; background: linear-gradient(180deg, #9fe86a, #3f9c30 55%, #7a5230); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 3px 0 #0a0f1e); }
+  .sub { text-align: center; color: #8fa0c8; margin: 2px 0 22px; font-size: 15px; }
+  .mbtn { display: block; width: 100%; margin: 8px 0; padding: 13px; font-size: 17px; font-weight: 700; color: #e8ecf4; background: #1d2848; border: 2px solid #3a4a7c; border-radius: 10px; cursor: pointer; }
+  .mbtn:hover { background: #27346030; border-color: #ffd34d; background: #253158; }
+  .mbtn.primary { background: #2c5a2c; border-color: #4f9c3f; }
+  .mbtn.primary:hover { background: #357035; }
+  .mbtn.danger { border-color: #7c2740; }
+  input[type=text] { width: 100%; padding: 11px; margin: 6px 0 12px; font-size: 16px; background: #0d1428; color: #fff; border: 2px solid #33406b; border-radius: 8px; }
+  label { font-size: 13px; color: #8fa0c8; }
+  .colorRow { display: flex; gap: 8px; margin: 6px 0 14px; }
+  .sw { width: 34px; height: 34px; border-radius: 8px; border: 3px solid transparent; cursor: pointer; }
+  .sw.sel { border-color: #fff; }
+  .worldRow { display: flex; align-items: center; gap: 8px; background: #0d1428; border: 1px solid #33406b; border-radius: 10px; padding: 10px 12px; margin: 7px 0; }
+  .worldRow .winfo { flex: 1; }
+  .worldRow .wname { font-weight: 700; }
+  .worldRow .wmeta { font-size: 12px; color: #8fa0c8; }
+  .worldRow button { padding: 7px 10px; font-size: 13px; background: #1d2848; color: #e8ecf4; border: 1px solid #3a4a7c; border-radius: 8px; cursor: pointer; }
+  .recipe { display: flex; align-items: center; gap: 10px; background: #0d1428; border: 1px solid #33406b; border-radius: 10px; padding: 9px 12px; margin: 7px 0; }
+  .recipe img.out { width: 40px; height: 40px; }
+  .recipe .rinfo { flex: 1; }
+  .recipe .rname { font-weight: 700; font-size: 15px; }
+  .recipe .rdesc { font-size: 12px; color: #8fa0c8; }
+  .costs { display: flex; gap: 6px; margin-top: 3px; }
+  .cost { display: flex; align-items: center; gap: 2px; font-size: 12px; background: #131b33; padding: 2px 6px; border-radius: 6px; }
+  .cost img { width: 15px; height: 15px; }
+  .cost.miss { color: #ff8a8a; outline: 1px solid #7c2740; }
+  .recipe button.craft { padding: 9px 14px; font-weight: 700; background: #2c5a2c; color: #fff; border: 2px solid #4f9c3f; border-radius: 9px; cursor: pointer; }
+  .recipe button.craft:disabled { background: #22283f; border-color: #33406b; color: #667; cursor: default; }
+  #qrBox { text-align: center; }
+  #qrBox img { border-radius: 10px; border: 6px solid #fff; }
+  #qrBox .link { font-size: 12px; color: #8fa0c8; word-break: break-all; margin: 10px 0; }
+  #deathPanel h2 { color: #ff6a6a; font-size: 34px; text-align: center; margin-bottom: 8px; }
+  #deathPanel p { text-align: center; font-size: 18px; }
+  #loading { position: fixed; inset: 0; background: #0b1226; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 30; font-size: 20px; gap: 14px; }
+  .spinner { width: 38px; height: 38px; border: 4px solid #33406b; border-top-color: #9fe86a; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .row2 { display: flex; gap: 10px; }
+  .row2 .mbtn { flex: 1; }
+  .hint { font-size: 12px; color: #8fa0c8; text-align: center; margin-top: 10px; line-height: 1.6; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
+</script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="dmgFlash"></div>
+<div id="crosshair" class="hidden">+</div>
+
+<div id="hud" class="hidden">
+  <div id="topbar">
+    <div class="chip" id="clock"><span id="seasonName">Vår</span> · Dag <span id="dayNum">1</span> <span id="clockIcon">☀️</span></div>
+    <div class="chip" id="roomBox">Kod: <b id="roomCode">----</b> <button id="btnQR" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer">Bjud in</button></div>
+    <div id="playersBox"></div>
+  </div>
+  <div id="heartBar" class="hidden"><div id="heartFill" style="width:100%"></div><span id="heartTxt">Hjärtsten 100/100</span></div>
+  <div id="hearts"></div>
+  <div id="hotbar"></div>
+  <div id="toasts"></div>
+</div>
+
+<div id="touchUI" class="hidden">
+  <div id="lookZone"></div>
+  <div id="joyZone"><div id="joyKnob"></div></div>
+  <div id="btnMine" class="tbtn">⛏️</div>
+  <div id="btnPlace" class="tbtn">🧱</div>
+  <div id="btnJump" class="tbtn">⬆️</div>
+  <div id="btnCraftT" class="tbtn small">🛠️</div>
+  <div id="btnEatT" class="tbtn small">🍎</div>
+  <div id="btnPauseT" class="tbtn small">⏸️</div>
+</div>
+
+<!-- main menu -->
+<div id="menu" class="overlay">
+  <div class="panel">
+    <h1 class="logo">VILDMARK</h1>
+    <p class="sub">Bygg · Samla · Försvara — tillsammans</p>
+    <button class="mbtn primary" id="btnNew">🌍 Ny värld</button>
+    <button class="mbtn" id="btnContinue">💾 Fortsätt värld</button>
+    <button class="mbtn" id="btnJoinMenu">🤝 Gå med hos någon</button>
+    <button class="mbtn" id="btnImport">📥 Importera värld</button>
+    <p class="hint">Samla trä, sten och kol · Bygg en bas runt din Hjärtsten<br>Försvara den mot vättar och troll om natten · Årstiderna växlar — sjön fryser på vintern!</p>
+  </div>
+</div>
+
+<div id="panelNew" class="overlay hidden">
+  <div class="panel">
+    <h2 style="margin-bottom:12px">🌍 Ny värld</h2>
+    <label>Världens namn</label>
+    <input type="text" id="inpWorldName" maxlength="24" placeholder="Vår värld">
+    <label>Ditt namn</label>
+    <input type="text" id="inpName" maxlength="12" placeholder="Spelare">
+    <label>Din färg</label>
+    <div class="colorRow" id="colorRow"></div>
+    <div class="row2">
+      <button class="mbtn" id="btnBackNew">Tillbaka</button>
+      <button class="mbtn primary" id="btnStartNew">Starta!</button>
+    </div>
+  </div>
+</div>
+
+<div id="panelJoin" class="overlay hidden">
+  <div class="panel">
+    <h2 style="margin-bottom:12px">🤝 Gå med</h2>
+    <label>Rumskod (4 bokstäver)</label>
+    <input type="text" id="inpCode" maxlength="4" placeholder="ABCD" style="text-transform:uppercase;letter-spacing:8px;font-size:24px;text-align:center">
+    <label>Ditt namn</label>
+    <input type="text" id="inpNameJ" maxlength="12" placeholder="Spelare">
+    <label>Din färg</label>
+    <div class="colorRow" id="colorRowJ"></div>
+    <div class="row2">
+      <button class="mbtn" id="btnBackJoin">Tillbaka</button>
+      <button class="mbtn primary" id="btnDoJoin">Anslut</button>
+    </div>
+    <p class="hint" id="joinStatus"></p>
+  </div>
+</div>
+
+<div id="panelContinue" class="overlay hidden">
+  <div class="panel">
+    <h2 style="margin-bottom:12px">💾 Fortsätt värld</h2>
+    <label>Ditt namn</label>
+    <input type="text" id="inpNameC" maxlength="12" placeholder="Spelare">
+    <div id="worldList"></div>
+    <button class="mbtn" id="btnBackCont">Tillbaka</button>
+  </div>
+</div>
+
+<div id="craftPanel" class="overlay hidden">
+  <div class="panel">
+    <h2 style="margin-bottom:6px">🛠️ Tillverka</h2>
+    <p class="sub" style="margin-bottom:10px">Tryck E eller 🛠️ för att stänga</p>
+    <div id="recipeList"></div>
+    <button class="mbtn" id="btnCloseCraft">Stäng</button>
+  </div>
+</div>
+
+<div id="pausePanel" class="overlay hidden">
+  <div class="panel">
+    <h2 style="margin-bottom:12px">⏸️ Paus</h2>
+    <button class="mbtn primary" id="btnResume">Fortsätt spela</button>
+    <button class="mbtn" id="btnSaveNow">💾 Spara nu</button>
+    <button class="mbtn" id="btnExport">📤 Exportera värld</button>
+    <button class="mbtn" id="btnMute">🔊 Ljud: på</button>
+    <button class="mbtn danger" id="btnLeave">🚪 Lämna spelet</button>
+    <p class="hint" id="pauseHint"></p>
+  </div>
+</div>
+
+<div id="qrBox" class="overlay hidden">
+  <div class="panel" style="text-align:center">
+    <h2 style="margin-bottom:10px">Bjud in familjen!</h2>
+    <p style="margin-bottom:8px">Rumskod: <b id="qrCode" style="font-size:26px;letter-spacing:5px;color:#ffd34d"></b></p>
+    <img id="qrImg" width="200" height="200" alt="QR">
+    <p class="link" id="qrLink"></p>
+    <button class="mbtn" id="btnCloseQR">Stäng</button>
+  </div>
+</div>
+
+<div id="deathPanel" class="overlay hidden">
+  <div class="panel">
+    <h2>💀 Du föll!</h2>
+    <p>Återuppstår om <b id="deathCount">5</b>…</p>
+  </div>
+</div>
+
+<div id="loading" class="hidden"><div class="spinner"></div><span id="loadingTxt">Bygger världen…</span></div>
+<input type="file" id="fileImport" accept=".json,application/json" hidden>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
