@@ -279,7 +279,13 @@ export class Villagers {
   }
 
   state() {
-    return this.list.map((v) => [v.id, v.name, v.prof, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.heading.toFixed(2), v.hp]);
+    return {
+      v: this.list.map((v) => [v.id, v.name, v.prof, +v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2), +v.heading.toFixed(2), v.hp]),
+      s: [...this.stations.entries()].map(([key, st]) => {
+        const [x, y, z] = key.split(',').map(Number);
+        return [key, st.vid ? 1 : 0, roofed(this.world, x, y, z) ? 1 : 0];
+      }),
+    };
   }
 
   serialize() {
@@ -345,12 +351,62 @@ function tagSprite(name, profName, color) {
   return spr;
 }
 
+const LAMP_COLORS = { red: 0xe23a3a, orange: 0xf0a030, green: 0x3ed44e };
+
 export class VillView {
   constructor(scene, atlasTex) {
     this.scene = scene;
     this.atlasTex = atlasTex;
     this.views = new Map();
     this.faceMats = {};
+    this.lamps = new Map(); // stationKey -> { mesh, color }
+    this.lampMats = {};
+    this.lampGeo = new THREE.OctahedronGeometry(0.17, 0);
+    this._t = 0;
+  }
+
+  _lampMat(color) {
+    if (!this.lampMats[color]) {
+      this.lampMats[color] = new THREE.MeshBasicMaterial({ color: LAMP_COLORS[color], transparent: true, opacity: 0.95 });
+    }
+    return this.lampMats[color];
+  }
+
+  syncLamps(stations, dt) {
+    this._t += dt;
+    const seen = new Set();
+    for (const [key, occ, roof] of stations) {
+      seen.add(key);
+      const color = !roof ? 'red' : (!occ ? 'orange' : 'green');
+      let l = this.lamps.get(key);
+      if (!l) {
+        const mesh = new THREE.Mesh(this.lampGeo, this._lampMat(color));
+        const [x, y, z] = key.split(',').map(Number);
+        mesh.position.set(x + 0.5, y + 1.45, z + 0.5);
+        mesh.userData.baseY = y + 1.45;
+        this.scene.add(mesh);
+        l = { mesh, color };
+        this.lamps.set(key, l);
+      }
+      if (l.color !== color) {
+        l.color = color;
+        l.mesh.material = this._lampMat(color);
+      }
+      // bob + spin + pulse — green spins happily, red blinks for attention
+      const m = l.mesh;
+      m.position.y = m.userData.baseY + Math.sin(this._t * 2.2) * 0.08;
+      m.rotation.y += dt * (color === 'green' ? 2.4 : 0.8);
+      const pulse = color === 'red' ? 0.55 + Math.abs(Math.sin(this._t * 4)) * 0.45 : 0.9;
+      m.material.opacity = pulse;
+      const s = 1 + (color === 'green' ? Math.sin(this._t * 3) * 0.12 : 0);
+      m.scale.set(s, s, s);
+    }
+    for (const [key, l] of this.lamps) {
+      if (!seen.has(key)) {
+        this.scene.remove(l.mesh);
+        this.lamps.delete(key);
+      }
+    }
   }
 
   _faceMat(tile) {
@@ -385,8 +441,10 @@ export class VillView {
   }
 
   sync(state, dt) {
+    const list = Array.isArray(state) ? state : state.v;
+    this.syncLamps(Array.isArray(state) ? [] : state.s || [], dt);
     const seen = new Set();
-    for (const [id, name, prof, x, y, z, heading, hp] of state) {
+    for (const [id, name, prof, x, y, z, heading, hp] of list) {
       seen.add(id);
       let v = this.views.get(id);
       if (v && v.prof !== prof) { this.scene.remove(v.group); this.views.delete(id); v = null; }
@@ -430,5 +488,7 @@ export class VillView {
   clear() {
     for (const [, v] of this.views) this.scene.remove(v.group);
     this.views.clear();
+    for (const [, l] of this.lamps) this.scene.remove(l.mesh);
+    this.lamps.clear();
   }
 }
