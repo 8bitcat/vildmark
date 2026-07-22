@@ -11,6 +11,18 @@ export const HOTBAR = [
   { res: 'huggbank' }, { res: 'odling' }, { res: 'gruvstation' }, { res: 'vaktpost' },
 ];
 
+export function loadHotbar() {
+  try {
+    const raw = JSON.parse(localStorage.getItem('vildmark_hotbar_v1'));
+    if (!Array.isArray(raw) || raw.length !== HOTBAR.length) return HOTBAR.map((s) => ({ ...s }));
+    return raw.map((s) => (s && (s.sword || typeof s.res === 'string')) ? { ...s } : {});
+  } catch { return HOTBAR.map((s) => ({ ...s })); }
+}
+
+export function saveHotbar(hotbar) {
+  try { localStorage.setItem('vildmark_hotbar_v1', JSON.stringify(hotbar)); } catch {}
+}
+
 export class Player {
   constructor(world) {
     this.world = world;
@@ -24,6 +36,7 @@ export class Player {
     this.axe = 0;
     this.pick = 0;
     this.inv = { jord: 0, sten: 0, sand: 0, stock: 0, planka: 0, kol: 0, jarn: 0, klump: 0, fackla: 0, gooblock: 0, hjartsten: 0, apple: 0, mynt: 0, huggbank: 0, odling: 0, gruvstation: 0, vaktpost: 0 };
+    this.hotbar = loadHotbar();
     this.sel = 0;
     this.dead = false;
     this.bounceCd = 0;

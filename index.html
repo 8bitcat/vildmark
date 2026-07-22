@@ -118,6 +118,19 @@
   .manual td, .manual th { border: 1px solid #33406b; padding: 5px 8px; font-size: 13px; text-align: left; color: #c8d0e4; }
   .manual th { color: #ffd34d; }
   .manual .steg { background: #0d1428; border: 1px solid #33406b; border-radius: 10px; padding: 8px 12px; margin: 6px 0; }
+  .slot .fist { font-size: 26px; }
+  #invGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 7px; margin: 8px 0 14px; }
+  #eqRow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 8px 0; }
+  .invItem { background: #0d1428; border: 1px solid #33406b; border-radius: 9px; padding: 7px 10px; display: flex; align-items: center; gap: 8px; font-size: 13px; touch-action: none; }
+  .invItem.placeable { cursor: grab; border-color: #3a5a3a; }
+  .invItem.placeable:hover { border-color: #9fe86a; }
+  .invItem.dim { opacity: 0.45; }
+  .invItem img { width: 26px; height: 26px; }
+  .invItem .n { margin-left: auto; font-weight: 800; }
+  .dragGhost { position: fixed; pointer-events: none; z-index: 200; width: 40px; height: 40px; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
+  body.invOpen #hud { z-index: 30; } /* lift the hotbar above the inventory backdrop so items can be dropped on it */
+  #invPanel { align-items: flex-start; padding-top: 3vh; }
+  #invPanel .panel { max-height: calc(100vh - 190px); overflow-y: auto; }
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }
@@ -134,7 +147,7 @@
     <div class="chip" id="clock"><span id="seasonName">Vår</span> · Dag <span id="dayNum">1</span> <span id="clockIcon">☀️</span></div>
     <div class="chip" id="coinBox"><img src="assets/icons/mynt.png" class="pix" style="width:18px;height:18px;vertical-align:-4px"> <b id="coinCnt">0</b></div>
     <div class="chip" id="roomBox">Kod: <b id="roomCode">----</b> <button id="btnQR" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer">Bjud in</button></div>
-    <div class="chip" id="bookBox"><button id="btnManualHud" style="padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer;pointer-events:auto">📖 Handbok</button></div>
+    <div class="chip" id="bookBox"><button id="btnManualHud" style="padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer;pointer-events:auto">📖 Handbok</button> <button id="btnInvHud" style="padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer;pointer-events:auto">🎒 Inventarie</button></div>
     <div id="playersBox"></div>
   </div>
   <div id="interactHint" class="hidden" style="position:absolute;bottom:150px;left:50%;transform:translateX(-50%);background:rgba(10,16,32,.8);border:1px solid #ffd34d;border-radius:8px;padding:4px 14px;font-size:14px;color:#ffd34d"></div>
@@ -155,6 +168,7 @@
   <div id="btnEatT" class="tbtn small">🍎</div>
   <div id="btnPauseT" class="tbtn small">⏸️</div>
   <div id="btnBookT" class="tbtn small" style="right:14px;top:198px">📖</div>
+  <div id="btnInvT" class="tbtn small" style="right:14px;top:252px">🎒</div>
 </div>
 
 <!-- main menu -->
@@ -245,6 +259,18 @@
   </div>
 </div>
 
+<div id="invPanel" class="overlay hidden">
+  <div class="panel" style="width:min(560px,94vw)">
+    <h2 style="margin-bottom:4px">🎒 Inventarie</h2>
+    <p class="sub" style="margin-bottom:8px">Dra gröna föremål till en ruta i baren längst ner för att kunna bygga med dem</p>
+    <h3 style="color:#9fe86a;font-size:15px;margin:8px 0 2px">Utrustning</h3>
+    <div id="eqRow"></div>
+    <h3 style="color:#9fe86a;font-size:15px;margin:12px 0 2px">Material & föremål</h3>
+    <div id="invGrid"></div>
+    <button class="mbtn" id="btnCloseInv">Stäng (I)</button>
+  </div>
+</div>
+
 <div id="manualPanel" class="overlay hidden">
   <div class="panel manual" style="width:min(560px,94vw)">
     <h2 style="margin-bottom:4px">📖 Handbok</h2>
@@ -252,7 +278,7 @@
 
     <h3>1. Så börjar ni 🌲</h3>
     <div class="steg"><b>Steg 1:</b> Gå till ett träd och <b>håll in</b> vänster musknapp (⛏️ på mobil) på stammen. Det går långsamt med händerna — men snart har du <img class="pix" src="assets/icons/stock.png"> <b>Stock</b>!</div>
-    <div class="steg"><b>Steg 2:</b> Öppna <b>Tillverka</b> (E eller 🛠️) och gör <b>4 Plankor</b> av stocken.</div>
+    <div class="steg"><b>Steg 2:</b> Öppna <b>Tillverka</b> (E eller 🛠️) och gör <b>4 Plankor</b> av stocken. Tips: när du craftar något byggbart <b>hamnar det direkt i handen</b> — stäng menyn och placera!</div>
     <div class="steg"><b>Steg 3:</b> Gör en <img class="pix" src="assets/icons/yxa_tra.png"> <b>Träyxa</b> (hugger 3× snabbare) och en <img class="pix" src="assets/icons/hacka_tra.png"> <b>Trähacka</b> — utan hacka kan du inte bryta sten alls!</div>
     <div class="steg"><b>Steg 4:</b> Bryt sten med hackan → gör <img class="pix" src="assets/icons/svard_tra.png"> <b>svärd</b> och bygg <b>stenmur</b> runt huset innan natten!</div>
 
@@ -307,6 +333,7 @@
       <tr><td>Hotbar</td><td>1–9 / scrollhjul</td><td>tryck på rutan</td></tr>
       <tr><td>Tillverka</td><td>E</td><td>🛠️</td></tr>
       <tr><td>Prata / öppna kista</td><td>F</td><td>💬</td></tr>
+      <tr><td>Inventarie</td><td>I</td><td>🎒</td></tr>
       <tr><td>Ät äpple</td><td>Q</td><td>🍎</td></tr>
       <tr><td>Handbok</td><td>H</td><td>📖</td></tr>
     </table>

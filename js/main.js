@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { B, DEF, RES, SWORD, TOOL, PLACE, RECIPES, CRACK_TILES, tileOffset } from './blocks.js';
 import { World, CH, H, SEA } from './worldgen.js';
 import { buildChunkGeo, makeMaterials } from './mesher.js';
-import { Player, HOTBAR } from './player.js';
+import { Player, HOTBAR, saveHotbar } from './player.js';
 import { Input } from './input.js';
 import { Mobs, MOBT, MobView } from './mobs.js';
 import { Villagers, VillView, PROFS, STATION_PROF, VILLAGER_COST, MAX_VILLAGERS } from './villagers.js';
@@ -64,14 +64,38 @@ const heldCache = new Map();
 
 const input = new Input(canvas, {
   onHotbar: (i) => { if (player) { player.sel = i; refreshHud(); } },
-  onHotbarDelta: (d) => { if (player) { player.sel = (player.sel + d + HOTBAR.length) % HOTBAR.length; refreshHud(); } },
+  onHotbarDelta: (d) => { if (player) { player.sel = (player.sel + d + player.hotbar.length) % player.hotbar.length; refreshHud(); } },
   onToggleCraft: () => toggleCraft(),
   onPauseRequest: () => { if (running && !uiOpen) showPause(); },
   onEat: () => eatApple(),
   onInteract: () => tryInteract(),
   onManual: () => toggleManual(),
+  onInventory: () => toggleInv(),
 });
-ui.onHotbarTap = (i) => { if (player) { player.sel = i; refreshHud(); } };
+ui.onSelect = (i) => { if (player) { player.sel = i; refreshHud(); } };
+ui.onAssign = (idx, payload) => {
+  if (!player) return;
+  const hb = player.hotbar;
+  if (payload.fromIdx !== undefined) {
+    if (payload.fromIdx === idx) return;
+    const tmp = hb[idx];
+    hb[idx] = hb[payload.fromIdx];
+    hb[payload.fromIdx] = tmp;
+  } else if (payload.sword) {
+    const j = hb.findIndex((s) => s.sword);
+    const old = hb[idx];
+    hb[idx] = { sword: true };
+    if (j >= 0 && j !== idx) hb[j] = old.sword ? {} : old;
+  } else {
+    if (!PLACE[payload.res]) { ui.toast('Det går inte att bygga med ' + RES[payload.res].name); return; }
+    const j = hb.findIndex((s) => s.res === payload.res);
+    const old = hb[idx];
+    hb[idx] = { res: payload.res };
+    if (j >= 0 && j !== idx) hb[j] = old.res === payload.res ? {} : old;
+  }
+  saveHotbar(hb);
+  refreshHud();
+};
 
 // ---------- helpers ----------
 function seasonView(season) {
@@ -199,10 +223,28 @@ function dropRemote(id) {
 
 // ---------- HUD ----------
 function refreshHud() {
-  ui.setHotbar(player.inv, player.sel, player.sword);
+  ui.setHotbar(player.hotbar, player.inv, player.sel, player.sword);
   ui.setHearts(Math.max(0, player.hp));
   ui.updateCraft(player.inv, player.sword, player.axe, player.pick);
   ui.setCoins(player.inv.mynt || 0);
+  if (invOpen) ui.updateInventory(player.inv, player.sword, player.axe, player.pick);
+}
+
+let invOpen = false;
+function toggleInv() {
+  if (!running) return;
+  invOpen = !invOpen;
+  uiOpen = invOpen;
+  if (invOpen) {
+    ui.updateInventory(player.inv, player.sword, player.axe, player.pick);
+    ui.show('invPanel');
+    document.body.classList.add('invOpen');
+    if (!input.isTouch) document.exitPointerLock?.();
+  } else {
+    ui.hide('invPanel');
+    document.body.classList.remove('invOpen');
+    input.requestLock();
+  }
 }
 
 function playersList() {
@@ -346,7 +388,7 @@ function updateHeld(dt) {
   heldSwing = Math.max(0, heldSwing - dt * 5);
   // what to show: tool matching the mined block > selected sword > selected block > fist
   let key = 'fist';
-  const slot = HOTBAR[player.sel];
+  const slot = player.hotbar[player.sel] || {};
   if (input.mine && mineTarget) {
     const id = world.getBlock(...mineTarget.split(',').map(Number));
     const def = DEF[id];
@@ -355,7 +397,7 @@ function updateHeld(dt) {
     else if (slot.sword && player.sword > 0) key = 'icon:' + SWORD[player.sword].icon;
   } else if (slot.sword) {
     key = player.sword > 0 ? 'icon:' + SWORD[player.sword].icon : 'fist';
-  } else if ((player.inv[slot.res] || 0) > 0) {
+  } else if (slot.res && (player.inv[slot.res] || 0) > 0) {
     key = 'block:' + slot.res;
   }
   if (key !== heldKey) {
@@ -420,9 +462,10 @@ function giveLoot(peer, res, spec) {
 }
 
 function tryPlace() {
-  const slot = HOTBAR[player.sel];
-  if (!slot || slot.sword) return;
+  const slot = player.hotbar[player.sel];
+  if (!slot || slot.sword || !slot.res) return;
   const res = slot.res;
+  if (!PLACE[res]) return;
   if ((player.inv[res] || 0) <= 0) { ui.toast('Inget ' + RES[res].name + ' — tillverka eller samla!'); return; }
   const hit = player.raycast();
   if (!hit) return;
@@ -631,6 +674,10 @@ function tryCraft(r) {
   } else {
     player.inv[r.out.res] = (player.inv[r.out.res] || 0) + r.out.n;
     ui.toast(r.name + ' tillverkat!');
+    if (PLACE[r.out.res]) {
+      const inBar = player.hotbar.some((s) => s.res === r.out.res);
+      ui.toast('🎒 ' + RES[r.out.res].name + ' ligger i ditt inventarie' + (inBar ? ' — välj i baren och placera!' : ' — tryck ' + (input.isTouch ? '🎒' : 'I') + ' och dra den till baren!'));
+    }
   }
   sfx.play('craft');
   refreshHud();
@@ -1391,6 +1438,8 @@ $('btnCloseVill').addEventListener('click', () => { ui.hideDialog(); uiOpen = fa
 $('btnManualMenu').addEventListener('click', () => toggleManual());
 $('btnManualHud').addEventListener('click', () => toggleManual());
 $('btnCloseManual').addEventListener('click', () => toggleManual());
+$('btnInvHud').addEventListener('click', () => { if (!invOpen) toggleInv(); });
+$('btnCloseInv').addEventListener('click', () => { if (invOpen) toggleInv(); });
 $('btnQR').addEventListener('click', () => { uiOpen = true; ui.show('qrBox'); if (!input.isTouch) document.exitPointerLock?.(); });
 $('btnCloseQR').addEventListener('click', () => { uiOpen = false; ui.hide('qrBox'); input.requestLock(); });
 addEventListener('pagehide', () => { if (isHost && running) doSave(false); });

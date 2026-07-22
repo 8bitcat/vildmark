@@ -1,6 +1,5 @@
 // VILDMARK — HUD & panels (DOM)
-import { RES, RECIPES, SWORD } from './blocks.js';
-import { HOTBAR } from './player.js';
+import { RES, RECIPES, SWORD, TOOL, TIER_NAME, PLACE } from './blocks.js';
 import { SEASON_NAMES } from './env.js';
 
 const $ = (id) => document.getElementById(id);
@@ -46,44 +45,141 @@ export class UI {
     }
   }
 
-  buildHotbar() {
+  buildHotbar(slotCount = 13) {
     const bar = $('hotbar');
     bar.innerHTML = '';
     this.slotEls = [];
-    HOTBAR.forEach((slot, i) => {
+    for (let i = 0; i < slotCount; i++) {
       const el = document.createElement('div');
       el.className = 'slot';
-      el.innerHTML = `<span class="kb">${i < 9 ? i + 1 : ''}</span><img class="pix" draggable="false"><span class="cnt"></span>`;
-      el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.onHotbarTap && this.onHotbarTap(i); });
+      el.dataset.idx = i;
+      el.innerHTML = `<span class="kb">${i < 9 ? i + 1 : i === 9 ? '0' : ''}</span><span class="fist hidden">✊</span><img class="pix" draggable="false"><span class="cnt"></span>`;
+      this._dragSource(el, () => this._hb && this._hb[i] && (this._hb[i].sword || this._hb[i].res) ? { fromIdx: i, ...this._hb[i] } : null, () => this.onSelect && this.onSelect(i));
       bar.appendChild(el);
       this.slotEls.push(el);
-    });
+    }
     this._hbBuilt = true;
   }
 
-  setHotbar(inv, sel, sword) {
-    if (!this._hbBuilt) this.buildHotbar();
-    HOTBAR.forEach((slot, i) => {
+  setHotbar(hotbar, inv, sel, sword) {
+    if (!this._hbBuilt) this.buildHotbar(hotbar.length);
+    this._hb = hotbar;
+    hotbar.forEach((slot, i) => {
       const el = this.slotEls[i];
       const img = el.querySelector('img');
       const cnt = el.querySelector('.cnt');
+      const fist = el.querySelector('.fist');
       el.classList.toggle('sel', i === sel);
+      fist.classList.add('hidden');
+      img.classList.remove('hidden');
       if (slot.sword) {
-        img.src = sword > 0 ? icon(SWORD[sword].icon) : icon('svard_tra');
-        img.style.opacity = sword > 0 ? '1' : '0.35';
-        img.style.filter = sword > 0 ? '' : 'grayscale(1)';
-        cnt.textContent = '';
+        if (sword > 0) {
+          img.src = icon(SWORD[sword].icon);
+          img.style.opacity = ''; img.style.filter = '';
+          cnt.textContent = TIER_NAME[sword];
+          el.title = SWORD[sword].name;
+        } else {
+          img.classList.add('hidden');
+          fist.classList.remove('hidden');
+          cnt.textContent = '';
+          el.title = 'Näve — crafta ett svärd (E)!';
+        }
         el.classList.remove('empty');
-        el.title = SWORD[sword].name;
-      } else {
+      } else if (slot.res) {
         const n = inv[slot.res] || 0;
         img.src = icon(RES[slot.res].icon);
         img.style.opacity = ''; img.style.filter = '';
         cnt.textContent = n > 0 ? n : '';
         el.classList.toggle('empty', n === 0);
         el.title = RES[slot.res].name;
+      } else {
+        img.classList.add('hidden');
+        cnt.textContent = '';
+        el.classList.remove('empty');
+        el.title = 'Tom ruta — dra hit något från inventariet (I)';
       }
     });
+  }
+
+  // ---------- inventory panel + drag & drop ----------
+  updateInventory(inv, sword, axe, pick) {
+    const grid = $('invGrid');
+    grid.innerHTML = '';
+    for (const [key, def] of Object.entries(RES)) {
+      const n = inv[key] || 0;
+      const el = document.createElement('div');
+      el.className = 'invItem' + (n === 0 ? ' dim' : '') + (PLACE[key] ? ' placeable' : '');
+      el.innerHTML = `<img class="pix" src="${icon(def.icon)}"><span>${def.name}</span><span class="n">${n}</span>`;
+      el.title = PLACE[key] ? def.name + ' — dra till baren för att kunna bygga!' : def.name;
+      if (PLACE[key]) this._dragSource(el, () => ({ res: key }), null);
+      grid.appendChild(el);
+    }
+    const eq = $('eqRow');
+    eq.innerHTML = '';
+    const items = [
+      { label: 'Svärd', cur: sword, icons: SWORD.map((s) => s.icon), names: SWORD.map((s) => s.name), drag: { sword: true } },
+      { label: 'Yxa', cur: axe, icons: TOOL.axe.icons, names: TIER_NAME.map((t) => t ? t + 'yxa' : 'Ingen yxa') },
+      { label: 'Hacka', cur: pick, icons: TOOL.pick.icons, names: TIER_NAME.map((t) => t ? t + 'hacka' : 'Ingen hacka') },
+    ];
+    for (const it of items) {
+      const el = document.createElement('div');
+      el.className = 'invItem eq' + (it.cur === 0 ? ' dim' : '');
+      el.innerHTML = it.cur > 0
+        ? `<img class="pix" src="${icon(it.icons[it.cur])}"><span>${it.names[it.cur]}</span><span class="n">✔</span>`
+        : `<span style="font-size:20px">${it.label === 'Svärd' ? '✊' : '✖'}</span><span>${it.names[0]}</span><span class="n" style="color:#8fa0c8">crafta!</span>`;
+      el.title = it.label + (it.cur > 0 ? ': ' + it.names[it.cur] : ' saknas — öppna Tillverka (E)');
+      if (it.drag && it.cur > 0) this._dragSource(el, () => it.drag, null);
+      eq.appendChild(el);
+    }
+  }
+
+  _dragSource(el, getPayload, onTap) {
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      const payload = getPayload();
+      const sx = e.clientX, sy = e.clientY;
+      let dragging = false;
+      const move = (ev) => {
+        if (!dragging && payload && Math.hypot(ev.clientX - sx, ev.clientY - sy) > 8) {
+          dragging = true;
+          this._ghostStart(payload, ev);
+        }
+        if (dragging) this._ghostMove(ev);
+      };
+      const up = (ev) => {
+        removeEventListener('pointermove', move);
+        removeEventListener('pointerup', up);
+        if (dragging) {
+          this._ghostEnd();
+          const t = document.elementFromPoint(ev.clientX, ev.clientY);
+          const slot = t && t.closest && t.closest('.slot');
+          if (slot && this.onAssign) this.onAssign(Number(slot.dataset.idx), payload);
+        } else if (onTap) onTap();
+      };
+      addEventListener('pointermove', move);
+      addEventListener('pointerup', up);
+    });
+  }
+
+  _ghostStart(payload, e) {
+    const g = document.createElement('img');
+    g.className = 'dragGhost pix';
+    g.src = payload.sword !== undefined && !payload.res
+      ? icon('svard_tra')
+      : icon(RES[payload.res]?.icon || 'planka');
+    document.body.appendChild(g);
+    this._ghost = g;
+    this._ghostMove(e);
+  }
+  _ghostMove(e) {
+    if (this._ghost) {
+      this._ghost.style.left = (e.clientX - 20) + 'px';
+      this._ghost.style.top = (e.clientY - 20) + 'px';
+    }
+  }
+  _ghostEnd() {
+    this._ghost?.remove();
+    this._ghost = null;
   }
 
   setClock(day, season, isNight) {

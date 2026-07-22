@@ -33,6 +33,7 @@ export class Input {
   }
 
   requestLock() {
+    if (document.querySelector('.overlay:not(.hidden)')) return; // a panel is open — stay unlocked
     if (!this.isTouch && this.enabled && document.pointerLockElement !== this.canvas) {
       this.canvas.requestPointerLock?.();
     }
@@ -45,10 +46,12 @@ export class Input {
       this.keys[e.code] = true;
       if (e.code === 'Space') { this.jump = true; e.preventDefault(); }
       if (e.code >= 'Digit1' && e.code <= 'Digit9') this.cb.onHotbar(Number(e.code.slice(5)) - 1);
+      if (e.code === 'Digit0') this.cb.onHotbar(9);
       if (e.code === 'KeyE') this.cb.onToggleCraft();
       if (e.code === 'KeyQ') this.cb.onEat();
       if (e.code === 'KeyF') this.cb.onInteract();
       if (e.code === 'KeyH') this.cb.onManual();
+      if (e.code === 'KeyI' || e.code === 'Tab') { this.cb.onInventory(); e.preventDefault(); }
       this._updMove();
     });
     addEventListener('keyup', (e) => {
@@ -155,6 +158,7 @@ export class Input {
     hold('btnPlace', () => { this._placeEdge = true; });
     hold('btnTalk', () => this.cb.onInteract());
     hold('btnBookT', () => this.cb.onManual());
+    hold('btnInvT', () => this.cb.onInventory());
     hold('btnJump', () => { this.jump = true; }, () => { this.jump = false; });
     hold('btnCraftT', () => this.cb.onToggleCraft());
     hold('btnEatT', () => this.cb.onEat());
