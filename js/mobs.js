@@ -1,12 +1,12 @@
 // VILDMARK — enemies: vätte (fast), troll (tank, breaks walls), skytt (ranged)
 // Host simulates; clients render from broadcast state.
 import * as THREE from 'three';
-import { B, DEF } from './blocks.js';
+import { B, DEF, tileOffset } from './blocks.js';
 
 export const MOBT = {
-  vatte: { hp: 10, dmg: 3, speed: 3.0, w: 0.7, h: 0.95, blockDmg: 3, atkCd: 1.1, hop: true,  face: 27, body: 0x58a83c, drops: { klump: [1, 2] } },
-  troll: { hp: 34, dmg: 6, speed: 1.7, w: 1.1, h: 1.85, blockDmg: 8, atkCd: 1.4, hop: false, face: 28, body: 0x7a8696, drops: { klump: [2, 3], sten: [1, 2] } },
-  skytt: { hp: 12, dmg: 3, speed: 2.3, w: 0.7, h: 1.15, blockDmg: 2, atkCd: 2.2, hop: false, face: 29, body: 0x3f7c38, drops: { klump: [1, 2], kol: [0, 1] }, ranged: true },
+  vatte: { hp: 10, dmg: 3, speed: 3.0, w: 0.7, h: 0.95, blockDmg: 3, atkCd: 1.1, hop: true,  face: 27, body: 0x58a83c, drops: { klump: [1, 2], mynt: [0, 1] } },
+  troll: { hp: 34, dmg: 6, speed: 1.7, w: 1.1, h: 1.85, blockDmg: 8, atkCd: 1.4, hop: false, face: 28, body: 0x7a8696, drops: { klump: [2, 3], sten: [1, 2], mynt: [1, 2] } },
+  skytt: { hp: 12, dmg: 3, speed: 2.3, w: 0.7, h: 1.15, blockDmg: 2, atkCd: 2.2, hop: false, face: 29, body: 0x3f7c38, drops: { klump: [1, 2], kol: [0, 1], mynt: [0, 1] }, ranged: true },
 };
 
 export class Mobs {
@@ -239,9 +239,9 @@ export class MobView {
   _faceMat(type) {
     if (!this.faceMats[type]) {
       const tex = this.atlasTex.clone();
-      const tile = MOBT[type].face;
-      tex.repeat.set(1 / 8, 1 / 4);
-      tex.offset.set((tile % 8) / 8, 1 - (Math.floor(tile / 8) + 1) / 4);
+      const o = tileOffset(MOBT[type].face);
+      tex.repeat.set(o.ru, o.rv);
+      tex.offset.set(o.u, o.v);
       tex.needsUpdate = true;
       this.faceMats[type] = new THREE.MeshLambertMaterial({ map: tex });
     }

@@ -8,6 +8,7 @@ export const HOTBAR = [
   { sword: true },
   { res: 'jord' }, { res: 'sten' }, { res: 'sand' }, { res: 'planka' },
   { res: 'stock' }, { res: 'fackla' }, { res: 'gooblock' }, { res: 'hjartsten' },
+  { res: 'huggbank' }, { res: 'odling' }, { res: 'gruvstation' }, { res: 'vaktpost' },
 ];
 
 export class Player {
@@ -20,7 +21,9 @@ export class Player {
     this.inWater = false;
     this.hp = 20; this.maxHp = 20;
     this.sword = 0;
-    this.inv = { jord: 0, sten: 0, sand: 0, stock: 0, planka: 0, kol: 0, jarn: 0, klump: 0, fackla: 0, gooblock: 0, hjartsten: 0, apple: 0 };
+    this.axe = 0;
+    this.pick = 0;
+    this.inv = { jord: 0, sten: 0, sand: 0, stock: 0, planka: 0, kol: 0, jarn: 0, klump: 0, fackla: 0, gooblock: 0, hjartsten: 0, apple: 0, mynt: 0, huggbank: 0, odling: 0, gruvstation: 0, vaktpost: 0 };
     this.sel = 0;
     this.dead = false;
     this.bounceCd = 0;

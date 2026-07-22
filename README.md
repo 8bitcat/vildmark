@@ -1,9 +1,22 @@
 # VILDMARK
 
 Ett co-op överlevnadsspel i webbläsaren för hela familjen — byggt med three.js.
-Samla resurser, tillverka verktyg, bygg en bas runt er **Hjärtsten** och försvara
-den mot **vättar**, **troll** och **vätteskyttar** om natten. Årstiderna växlar:
-på vintern fryser sjön till is som man kan gå på!
+Ni börjar i en liten by med ett starthus, en **Hjärtsten**, en **förrådskista**
+och **Byäldste Ragnar**. Samla resurser, tillverka verktyg (händer → trä → sten
+→ järn), bygg hus och försvara byn mot **vättar**, **troll** och **vätteskyttar**
+om natten. Årstiderna växlar: på vintern fryser sjön till is som man kan gå på!
+
+## Byn
+
+- Monster släpper ibland **mynt** 🪙 — hos Byäldsten köper du **bybor** (20 mynt)
+- Tillverka en arbetsstation (Skogshuggarbänk, Odlingslåda, Gruvstation, Vaktpost)
+  och bygg ett **hus med tak** runt den
+- Gå fram till en sysslolös bybo (F/💬) och ge hen jobbet — finns inget hus säger
+  bybon åt dig att bygga ett först!
+- Skogshuggare/bonde/gruvarbetare fyller **förrådskistan** i starthuset; vakten
+  slåss mot monstren. Uppdrag: *jobba · följ med mig · stanna här · gå hem*
+- Verktygsstege: sten kräver **hacka**, järn kräver **stenhacka**; yxor hugger
+  träd snabbare. Allt börjar med att samla trä!
 
 ## Spela
 
@@ -24,6 +37,7 @@ på vintern fryser sjön till is som man kan gå på!
 | Välj i hotbar | 1–9 / scrollhjul | tryck på rutan |
 | Tillverka | E | 🛠️ |
 | Ät äpple | Q | 🍎 |
+| Prata / öppna kista | F | 💬 |
 
 ## Teknik
 

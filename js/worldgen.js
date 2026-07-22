@@ -39,11 +39,15 @@ export class World {
     this.chunks = new Map();     // "cx,cz" -> Uint8Array(CH*H*CH)
     this.edits = new Map();      // "x,y,z" -> id
     this.dirty = new Set();      // chunk keys needing remesh
-    this.torches = new Set();    // "x,y,z" of torch blocks (from edits)
+    this.torches = new Set();    // "x,y,z" of torch blocks
     this.winterIce = false;
+    this._findVillage();
+    for (const [k, id] of this._villageBlocks()) {
+      if (id === B.TORCH) this.torches.add(k);
+    }
   }
 
-  height(x, z) {
+  rawHeight(x, z) {
     const s = this.seed;
     let h = 13 + fbm(s, x, z, 1 / 42) * 14;
     const m = fbm(s + 999, x, z, 1 / 90);
@@ -51,6 +55,71 @@ export class World {
     const lake = fbm(s + 555, x, z, 1 / 70);
     if (lake > 0.62) h -= (lake - 0.62) * 34;             // lake basins
     return Math.max(2, Math.min(H - 10, Math.floor(h)));
+  }
+
+  height(x, z) {
+    const raw = this.rawHeight(x, z);
+    const v = this.village;
+    if (!v) return raw;
+    const d = Math.hypot(x - v.x, z - v.z);
+    if (d < 9) return v.y;
+    if (d < 16) {
+      const t = (d - 9) / 7;
+      return Math.round(v.y * (1 - t) + raw * t);
+    }
+    return raw;
+  }
+
+  _findVillage() {
+    // deterministic: first lowland spot on a spiral from origin
+    for (let r = 0; r < 30; r++) {
+      for (let i = 0; i < Math.max(1, r * 6); i++) {
+        const a = (i / Math.max(1, r * 6)) * Math.PI * 2;
+        const x = Math.round(Math.sin(a) * r * 4), z = Math.round(Math.cos(a) * r * 4);
+        const h = this.rawHeight(x, z);
+        if (h >= SEA + 2 && h <= SEA + 7) {
+          this.village = { x, z, y: h };
+          return;
+        }
+      }
+    }
+    this.village = { x: 0, z: 0, y: Math.max(SEA + 2, this.rawHeight(0, 0)) };
+  }
+
+  // starter house: planks walls + log corners, roof, door, heart, chest, torches
+  _villageBlocks() {
+    if (this._vb) return this._vb;
+    const m = new Map();
+    const { x: vx, z: vz, y: vy } = this.village;
+    const put = (x, y, z, id) => m.set(x + ',' + y + ',' + z, id);
+    for (let x = vx - 3; x <= vx + 3; x++) {
+      for (let z = vz - 3; z <= vz + 2; z++) {
+        const wall = x === vx - 3 || x === vx + 3 || z === vz - 3 || z === vz + 2;
+        put(x, vy, z, B.PLANKS);              // floor
+        for (let y = vy + 1; y <= vy + 3; y++) {
+          if (wall) {
+            const corner = (x === vx - 3 || x === vx + 3) && (z === vz - 3 || z === vz + 2);
+            put(x, y, z, corner ? B.LOG : B.PLANKS);
+          } else {
+            put(x, y, z, B.AIR);              // clear interior
+          }
+        }
+        put(x, vy + 4, z, B.PLANKS);          // roof
+      }
+    }
+    put(vx, vy + 1, vz + 2, B.AIR);           // door (south)
+    put(vx, vy + 2, vz + 2, B.AIR);
+    put(vx, vy + 1, vz - 2, B.HEART);         // heart inside, north wall
+    put(vx + 2, vy + 1, vz - 2, B.CHEST);     // storage chest
+    put(vx - 2, vy + 1, vz - 2, B.TORCH);     // torch inside
+    put(vx - 1, vy + 1, vz + 3, B.TORCH);     // torches flanking door
+    put(vx + 1, vy + 1, vz + 3, B.TORCH);
+    this._vb = m;
+    this.heartPos = { x: vx, y: vy + 1, z: vz - 2 };
+    this.chestPos = { x: vx + 2, y: vy + 1, z: vz - 2 };
+    this.elderPos = { x: vx - 1 + 0.5, y: vy + 1, z: vz + 0.5 };
+    this.spawnPos = { x: vx + 0.5, y: vy + 1, z: vz + 4.5 };
+    return m;
   }
 
   // one tree candidate per 7x7 cell
@@ -61,6 +130,7 @@ export class World {
     const tx = cellX * 7 + Math.floor(hash2(this.seed + 778, cellX, cellZ) * 5) + 1;
     const tz = cellZ * 7 + Math.floor(hash2(this.seed + 779, cellX, cellZ) * 5) + 1;
     if (tx !== x || tz !== z) return null;
+    if (this.village && Math.hypot(x - this.village.x, z - this.village.z) < 13) return null;
     const h = this.height(x, z);
     if (h <= SEA + 1) return null; // no trees on beach/under water
     return { x, z, y: h, trunk: 4 + Math.floor(hash2(this.seed + 780, x, z) * 3) };
@@ -121,6 +191,16 @@ export class World {
         this.stampSoft(data, bx, bz, x, top + 1, z + 1, B.LEAVES);
         this.stampSoft(data, bx, bz, x, top + 1, z - 1, B.LEAVES);
         this.stampSoft(data, bx, bz, x, top + 2, z, B.LEAVES);
+      }
+    }
+    // village starter house (stamps over terrain/trees)
+    const v = this.village;
+    if (v && v.x + 6 >= bx - 3 && v.x - 6 <= bx + CH + 3 && v.z + 6 >= bz - 3 && v.z - 6 <= bz + CH + 3) {
+      for (const [k, id] of this._villageBlocks()) {
+        const [ex, ey, ez] = k.split(',').map(Number);
+        if (ex >= bx && ex < bx + CH && ez >= bz && ez < bz + CH && ey >= 0 && ey < H) {
+          data[((ex - bx) * H + ey) * CH + (ez - bz)] = id;
+        }
       }
     }
     // apply saved edits inside this chunk

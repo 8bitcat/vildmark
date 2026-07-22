@@ -53,7 +53,7 @@ export class UI {
     HOTBAR.forEach((slot, i) => {
       const el = document.createElement('div');
       el.className = 'slot';
-      el.innerHTML = `<span class="kb">${i + 1}</span><img class="pix" draggable="false"><span class="cnt"></span>`;
+      el.innerHTML = `<span class="kb">${i < 9 ? i + 1 : ''}</span><img class="pix" draggable="false"><span class="cnt"></span>`;
       el.addEventListener('pointerdown', (e) => { e.preventDefault(); this.onHotbarTap && this.onHotbarTap(i); });
       bar.appendChild(el);
       this.slotEls.push(el);
@@ -138,11 +138,19 @@ export class UI {
     setTimeout(() => { f.style.opacity = '0'; }, 130);
   }
 
-  buildCraft(getInv, canAfford, craftCb) {
+  buildCraft(getInv, craftCb) {
     const list = $('recipeList');
     list.innerHTML = '';
     this._recipeEls = [];
+    let lastCat = null;
     for (const r of RECIPES) {
+      if (r.cat !== lastCat) {
+        lastCat = r.cat;
+        const h = document.createElement('div');
+        h.style.cssText = 'font-weight:800;color:#ffd34d;margin:12px 0 2px;font-size:14px;letter-spacing:1px';
+        h.textContent = '— ' + r.cat.toUpperCase() + ' —';
+        list.appendChild(h);
+      }
       const el = document.createElement('div');
       el.className = 'recipe';
       const costs = Object.entries(r.cost)
@@ -156,8 +164,9 @@ export class UI {
     this.updateCraft(getInv());
   }
 
-  updateCraft(inv, sword = 0) {
+  updateCraft(inv, sword = 0, axe = 0, pick = 0) {
     if (!this._recipeEls) return;
+    const owned = { sword, axe, pick };
     for (const { r, el } of this._recipeEls) {
       let ok = true;
       el.querySelectorAll('.cost').forEach((c) => {
@@ -165,9 +174,41 @@ export class UI {
         c.classList.toggle('miss', !has);
         if (!has) ok = false;
       });
-      if (r.out.sword && sword >= r.out.sword) ok = false; // already owned
+      if (r.out.sword && sword >= r.out.sword) ok = false;            // already owned
+      if (r.out.tool && owned[r.out.tool] >= r.out.tier) ok = false;  // already owned
       el.querySelector('button').disabled = !ok;
     }
+  }
+
+  setCoins(n) {
+    $('coinCnt').textContent = n;
+  }
+
+  interactHint(text) {
+    const el = $('interactHint');
+    if (!text) { el.classList.add('hidden'); return; }
+    el.classList.remove('hidden');
+    if (el.textContent !== text) el.textContent = text;
+  }
+
+  showDialog(menu, onPick) {
+    $('villTitle').textContent = menu.title;
+    $('villLines').innerHTML = menu.lines.map((l) => '<p>' + l + '</p>').join('');
+    const box = $('villOpts');
+    box.innerHTML = '';
+    for (const o of menu.opts) {
+      const b = document.createElement('button');
+      b.className = 'mbtn';
+      b.textContent = o.label;
+      if (o.disabled) { b.disabled = true; b.style.opacity = '0.45'; }
+      else b.addEventListener('click', () => { this.hideDialog(); onPick(o.k); });
+      box.appendChild(b);
+    }
+    this.show('villPanel');
+  }
+
+  hideDialog() {
+    this.hide('villPanel');
   }
 
   buildColorRow(rowId, onPick) {

@@ -36,6 +36,16 @@
   .slot .cnt { position: absolute; right: 3px; bottom: 1px; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px #000; }
   .slot .kb { position: absolute; left: 4px; top: 2px; font-size: 9px; color: #8fa0c8; }
   .slot.empty img { opacity: .25; filter: grayscale(.8); }
+  @media (max-width: 980px) {
+    .slot { width: 42px; height: 42px; }
+    .slot img { width: 30px; height: 30px; }
+    #hotbar { gap: 3px; }
+  }
+  @media (max-width: 700px) {
+    .slot { width: 34px; height: 34px; border-radius: 7px; }
+    .slot img { width: 24px; height: 24px; }
+    .slot .kb { display: none; }
+  }
 
   #toasts { position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; }
   .toast { background: rgba(10,16,32,.85); border: 1px solid #3a4568; border-radius: 8px; padding: 5px 14px; font-size: 14px; animation: fadeup 3s forwards; }
@@ -114,9 +124,11 @@
 <div id="hud" class="hidden">
   <div id="topbar">
     <div class="chip" id="clock"><span id="seasonName">Vår</span> · Dag <span id="dayNum">1</span> <span id="clockIcon">☀️</span></div>
+    <div class="chip" id="coinBox"><img src="assets/icons/mynt.png" class="pix" style="width:18px;height:18px;vertical-align:-4px"> <b id="coinCnt">0</b></div>
     <div class="chip" id="roomBox">Kod: <b id="roomCode">----</b> <button id="btnQR" style="margin-left:6px;padding:2px 8px;border-radius:6px;border:1px solid #3a4a7c;background:#1d2848;color:#fff;cursor:pointer">Bjud in</button></div>
     <div id="playersBox"></div>
   </div>
+  <div id="interactHint" class="hidden" style="position:absolute;bottom:150px;left:50%;transform:translateX(-50%);background:rgba(10,16,32,.8);border:1px solid #ffd34d;border-radius:8px;padding:4px 14px;font-size:14px;color:#ffd34d"></div>
   <div id="heartBar" class="hidden"><div id="heartFill" style="width:100%"></div><span id="heartTxt">Hjärtsten 100/100</span></div>
   <div id="hearts"></div>
   <div id="hotbar"></div>
@@ -129,6 +141,7 @@
   <div id="btnMine" class="tbtn">⛏️</div>
   <div id="btnPlace" class="tbtn">🧱</div>
   <div id="btnJump" class="tbtn">⬆️</div>
+  <div id="btnTalk" class="tbtn" style="right:96px;bottom:170px">💬</div>
   <div id="btnCraftT" class="tbtn small">🛠️</div>
   <div id="btnEatT" class="tbtn small">🍎</div>
   <div id="btnPauseT" class="tbtn small">⏸️</div>
@@ -218,6 +231,15 @@
     <img id="qrImg" width="200" height="200" alt="QR">
     <p class="link" id="qrLink"></p>
     <button class="mbtn" id="btnCloseQR">Stäng</button>
+  </div>
+</div>
+
+<div id="villPanel" class="overlay hidden">
+  <div class="panel">
+    <h2 id="villTitle" style="margin-bottom:8px">Bybo</h2>
+    <div id="villLines" class="sub" style="text-align:left;margin-bottom:12px;line-height:1.5"></div>
+    <div id="villOpts"></div>
+    <button class="mbtn" id="btnCloseVill">Stäng</button>
   </div>
 </div>
 

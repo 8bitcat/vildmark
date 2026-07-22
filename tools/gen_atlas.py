@@ -5,7 +5,7 @@ import os, random
 from PIL import Image
 
 T = 16
-COLS, ROWS = 8, 4
+COLS, ROWS = 8, 6
 rng = random.Random(4711)
 
 atlas = Image.new("RGBA", (COLS * T, ROWS * T), (0, 0, 0, 0))
@@ -370,6 +370,176 @@ px(img, 5, 5, (255, 150, 168, 255))
 px(img, 6, 6, (255, 120, 140, 255))
 put(img, 31)
 
+# ---- 32 mynt (coin) ----
+img, _ = tile(32)
+coin = [(x, y) for x in range(4, 12) for y in range(4, 12)]
+for (x, y) in coin:
+    if (x in (4, 11) and y in (4, 11)):
+        continue
+    px(img, x, y, (232, 186, 58, 255))
+for (x, y) in [(5, 4), (6, 4), (9, 4), (10, 4), (4, 5), (11, 5), (4, 10), (11, 10), (5, 11), (10, 11), (4, 6), (4, 9), (11, 6), (11, 9), (6, 11), (9, 11), (7, 11), (8, 11), (7, 4), (8, 4)]:
+    px(img, x, y, (176, 132, 30, 255))
+for (x, y) in [(6, 6), (6, 7), (7, 5), (5, 7)]:
+    px(img, x, y, (255, 230, 140, 255))
+for (x, y) in [(7, 7), (8, 7), (7, 8), (8, 8), (7, 9), (8, 9), (7, 6), (8, 6)]:
+    px(img, x, y, (200, 156, 40, 255))
+put(img, 32)
+
+# ---- 33 chest front / 34 chest side ----
+for idx, front in [(33, True), (34, False)]:
+    img, _ = tile(idx)
+    fill(img, (150, 108, 58, 255))
+    for x in range(T):
+        for y in range(T):
+            if x in (0, 15) or y in (0, 15):
+                img.putpixel((x, y), (96, 66, 36, 255))
+    for x in range(1, 15):  # lid seam + metal band
+        px(img, x, 5, (96, 66, 36, 255))
+    speckle(img, [(134, 95, 50, 255), (166, 122, 68, 255)], 30)
+    if front:
+        for (x, y) in [(7, 5), (8, 5), (7, 6), (8, 6), (7, 7), (8, 7)]:
+            px(img, x, y, (190, 190, 200, 255))
+        px(img, 7, 6, (120, 120, 132, 255))
+    else:
+        for y in range(1, 15):
+            px(img, 7, y, (120, 120, 132, 255))
+            px(img, 8, y, (150, 150, 160, 255))
+    put(img, idx)
+
+# ---- 35 skogshuggarbänk (stump top + axe) ----
+img, _ = tile(35)
+fill(img, (176, 141, 87, 255))
+for x in range(T):
+    for y in range(T):
+        d = max(abs(x - 7.5), abs(y - 7.5))
+        if abs(d - 3) < 0.55 or abs(d - 5.5) < 0.55:
+            img.putpixel((x, y), (150, 117, 68, 255))
+        if x in (0, 15) or y in (0, 15):
+            img.putpixel((x, y), (96, 66, 40, 255))
+for k in range(6):  # axe handle
+    px(img, 3 + k, 12 - k, (110, 78, 44, 255))
+for (x, y) in [(9, 5), (10, 5), (11, 5), (9, 4), (10, 4), (11, 4), (10, 6), (11, 6), (12, 5)]:  # axe head
+    px(img, x, y, (172, 176, 186, 255))
+for (x, y) in [(12, 4), (12, 6)]:
+    px(img, x, y, (210, 214, 222, 255))
+put(img, 35)
+
+# ---- 36 odlingslåda (soil + sprouts) ----
+img, _ = tile(36)
+fill(img, (94, 64, 38, 255))
+speckle(img, [(76, 50, 28, 255), (110, 78, 48, 255)], 60)
+for x in range(T):
+    for y in range(T):
+        if x in (0, 15) or y in (0, 15):
+            img.putpixel((x, y), (150, 108, 58, 255))
+for gx in (3, 7, 11):
+    for gy in (3, 8, 12):
+        px(img, gx, gy, (92, 190, 70, 255))
+        px(img, gx, gy - 1, (120, 214, 96, 255))
+        px(img, gx + 1, gy, (70, 160, 52, 255))
+put(img, 36)
+
+# ---- 37 gruvstation (stone + pickaxe) ----
+img = stone.copy()
+for x in range(T):
+    for y in range(T):
+        if x in (0, 15) or y in (0, 15):
+            img.putpixel((x, y), (88, 90, 96, 255))
+for k in range(7):  # handle
+    px(img, 4 + k, 12 - k, (140, 100, 58, 255))
+for (x, y) in [(8, 3), (9, 3), (10, 4), (11, 5), (7, 3), (6, 4), (5, 5), (12, 6)]:  # pick head arc
+    px(img, x, y, (196, 200, 210, 255))
+put(img, 37)
+
+# ---- 38 vaktpost (blue shield w/ yellow cross) ----
+img, _ = tile(38)
+fill(img, (120, 122, 130, 255))
+speckle(img, [(104, 106, 114, 255), (136, 138, 146, 255)], 40)
+shield = [(x, y) for x in range(4, 12) for y in range(3, 11)] + [(5, 11), (6, 11), (9, 11), (10, 11), (6, 12), (7, 12), (8, 12), (9, 12), (7, 13), (8, 13)]
+for (x, y) in shield:
+    px(img, x, y, (36, 90, 176, 255))
+for y in range(3, 14):  # vertical yellow
+    for x in (7, 8):
+        if (x, y) in shield:
+            px(img, x, y, (240, 200, 60, 255))
+for x in range(4, 12):  # horizontal yellow
+    for y in (6, 7):
+        if (x, y) in shield:
+            px(img, x, y, (240, 200, 60, 255))
+for (x, y) in [(4, 3), (11, 3), (4, 10), (11, 10), (7, 13), (8, 13)]:
+    px(img, x, y, (20, 60, 130, 255))
+put(img, 38)
+
+# ---- 39 villager face / 40 elder face ----
+img, _ = tile(39)
+fill(img, (226, 186, 148, 255))
+for x in range(T):
+    for y in range(T):
+        if x in (0, 15) or y in (0, 15):
+            img.putpixel((x, y), (190, 150, 116, 255))
+for y in range(1, 5):  # hair
+    for x in range(1, 15):
+        img.putpixel((x, y), (122, 84, 48, 255))
+for (x, y) in [(4, 7), (5, 7), (10, 7), (11, 7)]:  # eyes
+    px(img, x, y, (52, 62, 80, 255))
+for (x, y) in [(3, 9), (12, 9)]:  # cheeks
+    px(img, x, y, (238, 152, 130, 255))
+for x in range(6, 10):  # smile
+    px(img, x, 11, (150, 96, 70, 255))
+for (x, y) in [(5, 10), (10, 10)]:
+    px(img, x, y, (150, 96, 70, 255))
+put(img, 39)
+
+img, _ = tile(40)
+fill(img, (222, 180, 142, 255))
+for x in range(T):
+    for y in range(T):
+        if x in (0, 15) or y in (0, 15):
+            img.putpixel((x, y), (186, 146, 112, 255))
+for y in range(1, 4):  # white hair
+    for x in range(1, 15):
+        img.putpixel((x, y), (228, 228, 224, 255))
+for (x, y) in [(3, 6), (4, 6), (5, 6), (10, 6), (11, 6), (12, 6)]:  # bushy brows
+    px(img, x, y, (228, 228, 224, 255))
+for (x, y) in [(4, 7), (5, 7), (10, 7), (11, 7)]:  # eyes
+    px(img, x, y, (52, 62, 80, 255))
+for y in range(10, 15):  # beard
+    for x in range(3, 13):
+        img.putpixel((x, y), (232, 232, 228, 255))
+for x in range(6, 10):  # mouth gap
+    px(img, x, 10, (170, 120, 92, 255))
+put(img, 40)
+
+# ---- 41-43 axes, 44-46 pickaxes (wood/stone/iron) ----
+def axe(idx, head, head_hi):
+    img, _ = tile(idx)
+    for k in range(9):  # handle
+        px(img, 3 + k, 13 - k, (110, 78, 44, 255))
+        px(img, 4 + k, 13 - k, (130, 94, 54, 255)) if k < 2 else None
+    for (x, y) in [(9, 3), (10, 3), (11, 4), (11, 5), (10, 6), (9, 6), (8, 4), (8, 5), (9, 4), (9, 5), (10, 4), (10, 5), (12, 5), (12, 4)]:
+        px(img, x, y, (*head, 255))
+    for (x, y) in [(12, 3), (13, 4), (13, 5), (12, 6)]:
+        px(img, x, y, (*head_hi, 255))
+    put(img, idx)
+
+def pick(idx, head, head_hi):
+    img, _ = tile(idx)
+    for k in range(9):  # handle
+        px(img, 3 + k, 13 - k, (110, 78, 44, 255))
+    arc = [(5, 3), (6, 2), (7, 2), (8, 2), (9, 2), (10, 3), (11, 4), (12, 5), (12, 6), (4, 4), (3, 5), (3, 6)]
+    for (x, y) in arc:
+        px(img, x, y, (*head, 255))
+    for (x, y) in [(6, 3), (7, 3), (8, 3), (9, 3), (10, 4), (11, 5), (4, 5), (4, 6)]:
+        px(img, x, y, (*head_hi, 255))
+    put(img, idx)
+
+axe(41, (150, 112, 62), (188, 148, 92))
+axe(42, (120, 122, 130), (168, 170, 178))
+axe(43, (198, 202, 212), (238, 240, 246))
+pick(44, (150, 112, 62), (188, 148, 92))
+pick(45, (120, 122, 130), (168, 170, 178))
+pick(46, (198, 202, 212), (238, 240, 246))
+
 out_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
 os.makedirs(out_dir, exist_ok=True)
 atlas_path = os.path.join(out_dir, "atlas.png")
@@ -381,6 +551,9 @@ icons = {
     "jord": 2, "sten": 4, "sand": 5, "stock": 6, "planka": 8, "kol": 14, "jarn": 15,
     "fackla": 17, "klump": 30, "gooblock": 16, "hjartsten": 18, "apple": 23,
     "svard_tra": 24, "svard_sten": 25, "svard_jarn": 26, "hp": 31, "vatte": 27, "troll": 28, "skytt": 29,
+    "mynt": 32, "kista": 33, "huggbank": 35, "odling": 36, "gruvstation": 37, "vaktpost": 38,
+    "bybo": 39, "aldste": 40,
+    "yxa_tra": 41, "yxa_sten": 42, "yxa_jarn": 43, "hacka_tra": 44, "hacka_sten": 45, "hacka_jarn": 46,
 }
 icon_dir = os.path.join(out_dir, "icons")
 os.makedirs(icon_dir, exist_ok=True)

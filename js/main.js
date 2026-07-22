@@ -1,11 +1,12 @@
 // VILDMARK — main: boot, menus, game loop, host logic, protocol
 import * as THREE from 'three';
-import { B, DEF, RES, SWORD, PLACE, RECIPES, CRACK_TILES, uvRect } from './blocks.js';
+import { B, DEF, RES, SWORD, TOOL, PLACE, RECIPES, CRACK_TILES, tileOffset } from './blocks.js';
 import { World, CH, H, SEA } from './worldgen.js';
 import { buildChunkGeo, makeMaterials } from './mesher.js';
 import { Player, HOTBAR } from './player.js';
 import { Input } from './input.js';
 import { Mobs, MOBT, MobView } from './mobs.js';
+import { Villagers, VillView, PROFS, STATION_PROF, VILLAGER_COST, MAX_VILLAGERS } from './villagers.js';
 import { Env, phaseOf, SEASON_TINT, SEASON_NAMES, CYCLE } from './env.js';
 import { Net } from './net.js';
 import * as SAVE from './save.js';
@@ -25,6 +26,7 @@ renderer.setSize(innerWidth, innerHeight);
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 420);
 camera.rotation.order = 'YXZ';
+scene.add(camera); // so the held-item group (child of camera) renders
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
@@ -54,6 +56,11 @@ let waveQueue = 0, waveTimer = 0, roamTimer = 10;
 let uiOpen = false, paused = false, craftOpen = false;
 let deathT = 0;
 let crackMesh = null;
+let villagers = null, villView = null;
+let storage = {};           // village storage (host)
+let villSendT = 0, hintT = 0, mineHintT = 0;
+let heldGroup = null, heldKey = null, heldSwing = 0, heldT = 0;
+const heldCache = new Map();
 
 const input = new Input(canvas, {
   onHotbar: (i) => { if (player) { player.sel = i; refreshHud(); } },
@@ -61,6 +68,7 @@ const input = new Input(canvas, {
   onToggleCraft: () => toggleCraft(),
   onPauseRequest: () => { if (running && !uiOpen) showPause(); },
   onEat: () => eatApple(),
+  onInteract: () => tryInteract(),
 });
 ui.onHotbarTap = (i) => { if (player) { player.sel = i; refreshHud(); } };
 
@@ -127,14 +135,8 @@ function updateChunks() {
 }
 
 function findSpawn() {
-  for (let r = 0; r < 40; r++) {
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      const x = Math.round(Math.sin(a) * r * 3), z = Math.round(Math.cos(a) * r * 3);
-      if (world.height(x, z) > SEA + 1) return new THREE.Vector3(x + 0.5, world.surfaceY(x, z) + 0.2, z + 0.5);
-    }
-  }
-  return new THREE.Vector3(0.5, world.surfaceY(0, 0) + 0.2, 0.5);
+  const s = world.spawnPos;
+  return new THREE.Vector3(s.x, s.y + 0.2, s.z);
 }
 
 function respawnPoint() {
@@ -198,7 +200,8 @@ function dropRemote(id) {
 function refreshHud() {
   ui.setHotbar(player.inv, player.sel, player.sword);
   ui.setHearts(Math.max(0, player.hp));
-  ui.updateCraft(player.inv, player.sword);
+  ui.updateCraft(player.inv, player.sword, player.axe, player.pick);
+  ui.setCoins(player.inv.mynt || 0);
 }
 
 function playersList() {
@@ -234,11 +237,36 @@ function tryMine(dt) {
   if (!hit) { mineTarget = null; setCrack(0, 0, 0, -1); return; }
   const def = DEF[hit.id];
   if (!def || def.hard < 0) { mineTarget = null; setCrack(0, 0, 0, -1); return; }
+  // tool gate: stone-family needs a pickaxe (iron needs stone pick)
+  let speed = 1;
+  if (def.tool) {
+    const tier = def.tool === 'axe' ? player.axe : player.pick;
+    speed = TOOL[def.tool].speed[tier];
+    if (speed <= 0) {
+      mineTarget = null; setCrack(0, 0, 0, -1);
+      mineHintT -= dt;
+      if (mineHintT <= 0) {
+        mineHintT = 2;
+        const need = (def.tier || 1) === 2 ? 'en stenhacka' : 'en hacka';
+        ui.toast(`⛏️ Du behöver ${need} för ${def.name}! (Tillverka i menyn — E)`);
+      }
+      return;
+    }
+    if (def.tool === 'pick' && player.pick < (def.tier || 1)) {
+      mineTarget = null; setCrack(0, 0, 0, -1);
+      mineHintT -= dt;
+      if (mineHintT <= 0) {
+        mineHintT = 2;
+        ui.toast(`⛏️ ${def.name} kräver en stenhacka eller bättre!`);
+      }
+      return;
+    }
+  }
   const key = hit.x + ',' + hit.y + ',' + hit.z;
   if (mineTarget !== key) { mineTarget = key; mineProgress = 0; }
-  mineProgress += dt / def.hard;
+  mineProgress += dt * speed / def.hard;
   mineTick -= dt;
-  if (mineTick <= 0) { mineTick = 0.22; sfx.play('dig'); }
+  if (mineTick <= 0) { mineTick = 0.22; sfx.play('dig'); heldSwing = 1; }
   setCrack(hit.x, hit.y, hit.z, Math.floor(mineProgress * 3));
   if (mineProgress >= 1) {
     mineTarget = null; mineProgress = 0;
@@ -246,6 +274,86 @@ function tryMine(dt) {
     sfx.play('break');
     doMine(hit.x, hit.y, hit.z);
   }
+}
+
+// ---------- first-person held item ----------
+function heldIconMesh(iconName) {
+  const tex = new THREE.TextureLoader().load('assets/icons/' + iconName + '.png');
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.34, 0.34),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.1, side: THREE.DoubleSide })
+  );
+  m.rotation.y = -0.5;
+  return m;
+}
+
+function heldBlockMesh(res) {
+  const id = PLACE[res];
+  const tiles = DEF[id].tiles;
+  const mats6 = [];
+  for (const t of [tiles[1], tiles[1], tiles[0], tiles[2], tiles[1], tiles[1]]) {
+    const tex = atlasTex.clone();
+    const o = tileOffset(t);
+    tex.repeat.set(o.ru, o.rv);
+    tex.offset.set(o.u, o.v);
+    tex.needsUpdate = true;
+    mats6.push(new THREE.MeshBasicMaterial({ map: tex }));
+  }
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), mats6);
+  m.rotation.y = 0.6;
+  return m;
+}
+
+function heldFistMesh() {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.2), new THREE.MeshBasicMaterial({ color: 0xe2ba94 }));
+  m.rotation.z = 0.3;
+  return m;
+}
+
+function updateHeld(dt) {
+  if (!heldGroup) {
+    heldGroup = new THREE.Group();
+    heldGroup.position.set(0.5, -0.46, -0.85);
+    camera.add(heldGroup);
+  }
+  heldT += dt;
+  heldSwing = Math.max(0, heldSwing - dt * 5);
+  // what to show: tool matching the mined block > selected sword > selected block > fist
+  let key = 'fist';
+  const slot = HOTBAR[player.sel];
+  if (input.mine && mineTarget) {
+    const id = world.getBlock(...mineTarget.split(',').map(Number));
+    const def = DEF[id];
+    if (def?.tool === 'axe' && player.axe > 0) key = 'icon:' + TOOL.axe.icons[player.axe];
+    else if (def?.tool === 'pick' && player.pick > 0) key = 'icon:' + TOOL.pick.icons[player.pick];
+    else if (slot.sword && player.sword > 0) key = 'icon:' + SWORD[player.sword].icon;
+  } else if (slot.sword) {
+    key = player.sword > 0 ? 'icon:' + SWORD[player.sword].icon : 'fist';
+  } else if ((player.inv[slot.res] || 0) > 0) {
+    key = 'block:' + slot.res;
+  }
+  if (key !== heldKey) {
+    heldKey = key;
+    heldGroup.clear();
+    let mesh = heldCache.get(key);
+    if (!mesh) {
+      if (key === 'fist') mesh = heldFistMesh();
+      else if (key.startsWith('icon:')) mesh = heldIconMesh(key.slice(5));
+      else mesh = heldBlockMesh(key.slice(6));
+      heldCache.set(key, mesh);
+    }
+    heldGroup.add(mesh);
+  }
+  // idle bob + swing
+  const walk = Math.hypot(player.vel.x, player.vel.z);
+  const bob = Math.sin(heldT * 7) * 0.012 * Math.min(1, walk / 4);
+  const sw = Math.sin(heldSwing * Math.PI);
+  heldGroup.position.set(0.5 - sw * 0.12, -0.46 + bob - sw * 0.08, -0.85 - sw * 0.08);
+  heldGroup.rotation.z = -sw * 0.9;
+  heldGroup.rotation.x = -sw * 0.5;
 }
 
 function doMine(x, y, z) {
@@ -267,6 +375,10 @@ function hostMined(peer, x, y, z, id) {
     heart = null;
     broadcastHeart();
     ui.setHeartBar(null);
+  }
+  if (STATION_PROF[id]) {
+    const s = villagers.unregisterStation(x, y, z);
+    if (s?.vid) broadcastToastAll('Arbetsstationen revs — bybon är sysslolös.');
   }
   net.broadcast('edit', { x, y, z, id: B.AIR }, peer === 'local' ? null : peer);
 }
@@ -301,6 +413,7 @@ function tryPlace() {
   const id = PLACE[res];
   world.setBlock(x, y, z, id);
   sfx.play('place');
+  heldSwing = 1;
   refreshHud();
   if (isHost) hostPlaced('local', x, y, z, id, res);
   else net.send('place', { x, y, z, res });
@@ -319,6 +432,10 @@ function hostPlaced(peer, x, y, z, id, res) {
     broadcastHeart();
     ui.setHeartBar(heart);
     ui.toast('Hjärtstenen är placerad — försvara den!');
+  }
+  if (STATION_PROF[id]) {
+    villagers.registerStation(x, y, z, id);
+    sendToastTo(peer, `${DEF[id].name} byggd! Se till att den har tak, och prata sen med en sysslolös bybo.`);
   }
   net.broadcast('edit', { x, y, z, id }, peer === 'local' ? null : peer);
 }
@@ -340,6 +457,7 @@ function tryAttack() {
   }
   if (best === null) return false;
   attackCd = 0.38;
+  heldSwing = 1;
   const dmg = SWORD[player.sword].dmg;
   const kx = d.x, kz = d.z;
   sfx.play('mobhit');
@@ -362,6 +480,87 @@ function eatApple() {
   sfx.play('eat');
   refreshHud();
   syncSoon();
+}
+
+// ---------- interaction: villagers, elder shop, storage chest ----------
+function interactTarget() {
+  const hit = player.raycast(4.5);
+  if (hit && hit.id === B.CHEST) return { kind: 'chest' };
+  const v = villView && villView.nearest(player.eye(), 3.6);
+  if (v) return { kind: 'villager', id: v.id, name: v.name };
+  return null;
+}
+
+function tryInteract() {
+  if (!running || player.dead || uiOpen) return;
+  const t = interactTarget();
+  if (!t) return;
+  if (t.kind === 'chest') {
+    if (isHost) collectStorage('local');
+    else net.send('collect', {});
+    return;
+  }
+  if (isHost) {
+    const menu = villagers.menu(t.id);
+    if (menu) openDialog(menu);
+  } else {
+    net.send('vmenu', { id: t.id });
+  }
+}
+
+function openDialog(menu) {
+  uiOpen = true;
+  if (!input.isTouch) document.exitPointerLock?.();
+  ui.showDialog(menu, (k) => {
+    uiOpen = false;
+    input.requestLock();
+    if (isHost) hostOrder('local', menu.vid, k);
+    else {
+      if (k === 'buy' && (player.inv.mynt || 0) < VILLAGER_COST) { ui.toast('För få mynt! Döda monster för att tjäna fler.'); return; }
+      net.send('vorder', { id: menu.vid, k });
+    }
+  });
+}
+
+function hostOrder(peer, vid, k) {
+  if (k === 'buy') {
+    const elder = villagers.get(vid);
+    if (!elder || !PROFS[elder.prof].elder) return;
+    if (villagers.list.length >= MAX_VILLAGERS + 1) {
+      sendToastTo(peer, 'Byn är full — max ' + MAX_VILLAGERS + ' bybor!');
+      return;
+    }
+    if (peer === 'local') {
+      if ((player.inv.mynt || 0) < VILLAGER_COST) { ui.toast('För få mynt! Döda monster för att tjäna fler.'); return; }
+      player.inv.mynt -= VILLAGER_COST;
+      refreshHud();
+    } else {
+      net.sendTo(peer, 'charge', { res: 'mynt', n: VILLAGER_COST });
+    }
+    const v = world.village;
+    const nv = villagers.spawn(v.x + 0.5 + (Math.random() * 4 - 2), v.y + 1.2, v.z + 4.5 + Math.random() * 2, 'ledig');
+    broadcastToastAll(`🧑 En ny bybo har anlänt: ${nv.name}! Prata med hen för att ge ett jobb.`);
+    return;
+  }
+  const msg = villagers.order(vid, k, peer);
+  if (msg) sendToastTo(peer, msg);
+}
+
+function sendToastTo(peer, msg) {
+  if (peer === 'local') ui.toast(msg);
+  else net.sendTo(peer, 'toastmsg', { msg });
+}
+function broadcastToastAll(msg) {
+  ui.toast(msg);
+  net.broadcast('toastmsg', { msg });
+}
+
+function collectStorage(peer) {
+  const entries = Object.entries(storage).filter(([, n]) => n > 0);
+  if (!entries.length) { sendToastTo(peer, 'Förrådskistan är tom — byborna fyller på när de jobbar.'); return; }
+  for (const [res, n] of entries) giveLoot(peer, res, n);
+  storage = {};
+  sfxAt('craft', world.chestPos.x, world.chestPos.y, world.chestPos.z, 20);
 }
 
 let syncT = 0;
@@ -403,6 +602,9 @@ function tryCraft(r) {
   if (r.out.sword) {
     player.sword = Math.max(player.sword, r.out.sword);
     ui.toast(SWORD[r.out.sword].name + ' tillverkat!');
+  } else if (r.out.tool) {
+    player[r.out.tool] = Math.max(player[r.out.tool], r.out.tier);
+    ui.toast(r.name + ' tillverkad!');
   } else {
     player.inv[r.out.res] = (player.inv[r.out.res] || 0) + r.out.n;
     ui.toast(r.name + ' tillverkat!');
@@ -446,17 +648,20 @@ function hidePause() {
 function buildSaveState() {
   const players = { ...savedPlayers };
   players[myName.toLowerCase()] = {
-    name: myName, inv: player.inv, sword: player.sword, hp: player.hp,
+    name: myName, inv: player.inv, sword: player.sword, axe: player.axe, pick: player.pick, hp: player.hp,
     pos: [player.pos.x, player.pos.y, player.pos.z],
   };
   for (const [, r] of remotes) {
     players[r.name.toLowerCase()] = {
-      name: r.name, inv: r.inv, sword: r.sword, hp: r.hp, pos: [r.tx, r.ty, r.tz],
+      name: r.name, inv: r.inv, sword: r.sword, axe: r.axe || 0, pick: r.pick || 0, hp: r.hp, pos: [r.tx, r.ty, r.tz],
     };
   }
   return {
-    v: 1, name: worldName, seed: world.seed, wt, savedAt: Date.now(),
+    v: 2, name: worldName, seed: world.seed, wt, savedAt: Date.now(),
     edits: world.editsArray(), heart, players,
+    villagers: villagers.serialize(),
+    stations: [...villagers.stations.entries()].map(([key, s]) => ({ key, type: s.type })),
+    storage,
   };
 }
 
@@ -517,13 +722,27 @@ function hostTick(dt, ph) {
     ui.setHeartBar(heart);
   }
 
-  // mob sim
+  // elder returns at dawn if lost
+  if (!ph.isNight && !villagers.elder()) {
+    const e = world.elderPos;
+    villagers.spawn(e.x, e.y + 0.2, e.z, 'aldste', 'Byäldste Ragnar');
+    broadcastToastAll('🧙 Byäldste Ragnar är tillbaka i byn!');
+  }
+
+  // mob sim — mobs target players AND villagers ("v<id>" peers)
   const players = [{ peer: 'local', x: player.pos.x, y: player.pos.y, z: player.pos.z, hp: player.hp, dead: player.dead }];
   for (const [id, r] of remotes) players.push({ peer: id, x: r.tx, y: r.ty, z: r.tz, hp: r.hp, dead: r.dead });
+  const targets = players.slice();
+  for (const v of villagers.list) targets.push({ peer: 'vill:' + v.id, x: v.x, y: v.y, z: v.z, hp: v.hp, dead: false });
   mobs.update(dt, {
-    players, heart, isNight: ph.isNight, day: ph.day,
+    players: targets, heart, isNight: ph.isNight, day: ph.day,
     cb: {
       damagePlayer: (peer, n) => {
+        if (typeof peer === 'string' && peer.startsWith('vill:')) {
+          const v = villagers.hit(Number(peer.slice(5)), n);
+          if (v) sfxAt('hurt', v.x, v.y, v.z, 22);
+          return;
+        }
         if (peer === 'local') takeDamage(n);
         else net.sendTo(peer, 'dmg', { n });
       },
@@ -559,11 +778,30 @@ function hostTick(dt, ph) {
     },
   });
 
+  // villager sim
+  villagers.update(dt, {
+    players, mobs, village: world.village, isNight: ph.isNight,
+    cb: {
+      store: (res, n) => { storage[res] = (storage[res] || 0) + n; },
+      toast: (msg) => broadcastToastAll(msg),
+      sfx: (name, x, y, z) => sfxAt(name, x, y, z, 22),
+      villagerDied: (v) => {
+        broadcastToastAll(`💀 ${PROFS[v.prof].name} ${v.name} stupade!` + (PROFS[v.prof].elder ? ' Byäldsten återvänder i gryningen.' : ''));
+        sfxAt('death', v.x, v.y, v.z, 30);
+      },
+    },
+  });
+
   // broadcast state
   mobSendT -= dt;
   if (mobSendT <= 0) {
     mobSendT = 0.11;
     net.broadcast('mobs', mobs.state());
+  }
+  villSendT -= dt;
+  if (villSendT <= 0) {
+    villSendT = 0.13;
+    net.broadcast('vill', villagers.state());
   }
   timeSendT -= dt;
   if (timeSendT <= 0) {
@@ -619,7 +857,7 @@ function setupHostNet() {
           if (saved) { r.inv = saved.inv || {}; r.sword = saved.sword || 0; r.hp = saved.hp ?? 20; }
           net.sendTo(peer, 'init', {
             seed: world.seed, wt, edits: world.editsArray(), heart,
-            you: { pos: sp, inv: saved?.inv || null, sword: saved?.sword || 0, hp: saved?.hp ?? 20 },
+            you: { pos: sp, inv: saved?.inv || null, sword: saved?.sword || 0, axe: saved?.axe || 0, pick: saved?.pick || 0, hp: saved?.hp ?? 20 },
           });
           ui.toast(r.name + ' gick med i spelet!');
           ui.setPlayers(playersList());
@@ -655,9 +893,16 @@ function setupHostNet() {
         case 'hitmob': hostHitMob(peer, d.id, Math.min(20, d.dmg), d.kx, d.kz); break;
         case 'sync': {
           const r = remotes.get(peer);
-          if (r) { r.inv = d.inv; r.sword = d.sword; r.hp = d.hp; }
+          if (r) { r.inv = d.inv; r.sword = d.sword; r.hp = d.hp; if (d.axe !== undefined) { r.axe = d.axe; r.pick = d.pick; } }
           break;
         }
+        case 'collect': collectStorage(peer); break;
+        case 'vmenu': {
+          const menu = villagers.menu(d.id);
+          if (menu) net.sendTo(peer, 'vmenu', menu);
+          break;
+        }
+        case 'vorder': hostOrder(peer, d.id, d.k); break;
       }
     },
   });
@@ -710,6 +955,14 @@ function setupClientNet(onInit) {
           if (d.snd) sfx.play(d.snd);
           break;
         }
+        case 'toastmsg': ui.toast(d.msg); break;
+        case 'vill': villView && (villView._last = d); break;
+        case 'vmenu': openDialog(d); break;
+        case 'charge': {
+          player.inv[d.res] = Math.max(0, (player.inv[d.res] || 0) - d.n);
+          refreshHud();
+          break;
+        }
       }
     },
     hostLost: () => {
@@ -733,8 +986,9 @@ async function loadAtlas() {
 function commonStart() {
   env = new Env(scene);
   mobView = new MobView(scene, atlasTex);
+  villView = new VillView(scene, atlasTex);
   ui.buildHotbar();
-  ui.buildCraft(() => player.inv, null, tryCraft);
+  ui.buildCraft(() => player.inv, tryCraft);
   refreshHud();
   ui.setPlayers(playersList());
   ui.hide('menu'); ui.hide('loading');
@@ -764,12 +1018,40 @@ async function startHost(save) {
     savedPlayers = save.players || {};
   }
   mobs = new Mobs(world);
+  villagers = new Villagers(world);
+  storage = (save && save.storage) || {};
+  if (save) {
+    villagers.restore(save.villagers, save.stations);
+    // older saves: recover stations from placed blocks
+    for (const [k, id] of world.edits) {
+      if (STATION_PROF[id] && !villagers.stations.has(k)) {
+        const [x, y, z] = k.split(',').map(Number);
+        villagers.registerStation(x, y, z, id);
+      }
+    }
+  }
+  if (!villagers.elder()) {
+    const e = world.elderPos;
+    villagers.spawn(e.x, e.y + 0.2, e.z, 'aldste', 'Byäldste Ragnar');
+  }
+  if (!save) {
+    // one free helper to teach the mechanic
+    const v = world.village;
+    villagers.spawn(v.x - 1.5, v.y + 1.2, v.z + 4.5, 'ledig');
+  }
+  // heart: default to the village heart block if present and no saved heart
+  if (save) heart = save.heart || null;
+  if (!heart && world.getBlock(world.heartPos.x, world.heartPos.y, world.heartPos.z) === B.HEART) {
+    heart = { ...world.heartPos, hp: HEART_MAX, max: HEART_MAX };
+  }
   player = new Player(world);
   const me = savedPlayers[myName.toLowerCase()];
   if (me?.pos) {
     player.pos.set(me.pos[0], me.pos[1] + 0.1, me.pos[2]);
     player.inv = { ...player.inv, ...me.inv };
     player.sword = me.sword || 0;
+    player.axe = me.axe || 0;
+    player.pick = me.pick || 0;
     player.hp = me.hp ?? 20;
   } else {
     player.pos.copy(findSpawn());
@@ -809,6 +1091,8 @@ async function startClient(code) {
     player.pos.set(d.you.pos[0], d.you.pos[1] + 0.1, d.you.pos[2]);
     if (d.you.inv) player.inv = { ...player.inv, ...d.you.inv };
     player.sword = d.you.sword || 0;
+    player.axe = d.you.axe || 0;
+    player.pick = d.you.pick || 0;
     player.hp = d.you.hp ?? 20;
     $('roomCode').textContent = code;
     updateQR(code);
@@ -920,7 +1204,7 @@ function loop() {
   syncT -= dt;
   if (syncT <= 0 && syncT > -999) {
     syncT = -1000;
-    if (!isHost && net.hostConn) net.send('sync', { inv: player.inv, sword: player.sword, hp: player.hp });
+    if (!isHost && net.hostConn) net.send('sync', { inv: player.inv, sword: player.sword, axe: player.axe, pick: player.pick, hp: player.hp });
   }
   if (isHost) {
     hostTick(dt, ph);
@@ -929,10 +1213,26 @@ function loop() {
       playersSendT = 0.085;
       broadcastPlayers();
     }
-    // host renders mobs from sim state directly
+    // host renders mobs/villagers from sim state directly
     mobView.sync(mobs.state(), dt);
-  } else if (mobView._last) {
-    mobView.sync(mobView._last, dt);
+    villView.sync(villagers.state(), dt);
+  } else {
+    if (mobView._last) mobView.sync(mobView._last, dt);
+    if (villView._last) villView.sync(villView._last, dt);
+  }
+
+  updateHeld(dt);
+
+  // interact hint (F / 💬)
+  hintT -= dt;
+  if (hintT <= 0) {
+    hintT = 0.15;
+    if (!uiOpen && !player.dead) {
+      const t = interactTarget();
+      if (!t) ui.interactHint(null);
+      else if (t.kind === 'chest') ui.interactHint((input.isTouch ? '💬' : 'F') + ' · Öppna förrådskistan');
+      else ui.interactHint((input.isTouch ? '💬' : 'F') + ' · Prata med ' + (t.name || 'bybon'));
+    } else ui.interactHint(null);
   }
 
   ui.setPlayers(playersList());
@@ -1046,6 +1346,7 @@ $('btnLeave').addEventListener('click', () => {
   location.reload();
 });
 $('btnCloseCraft').addEventListener('click', () => toggleCraft());
+$('btnCloseVill').addEventListener('click', () => { ui.hideDialog(); uiOpen = false; input.requestLock(); });
 $('btnQR').addEventListener('click', () => { uiOpen = true; ui.show('qrBox'); if (!input.isTouch) document.exitPointerLock?.(); });
 $('btnCloseQR').addEventListener('click', () => { uiOpen = false; ui.hide('qrBox'); input.requestLock(); });
 addEventListener('pagehide', () => { if (isHost && running) doSave(false); });
@@ -1062,6 +1363,7 @@ if (joinCode) {
 // ---------- debug hooks ----------
 window.__DBG = () => ({
   running, isHost, wt, ph: phaseOf(wt), pos: player && player.pos.toArray(), hp: player?.hp,
+  axe: player?.axe, pick: player?.pick, sword: player?.sword,
   chunks: chunkMeshes.size, queue: remeshQueue.length, mobs: mobs?.list.length ?? (mobView?._last?.m.length || 0),
   conns: net ? (net.mode === 'host' ? net.conns.size : (net.hostConn?.open ? 1 : 0)) : 0,
   heart, inv: player?.inv,
@@ -1076,6 +1378,11 @@ window.__SPAWN = (type, d = 6) => {
 window.__TP = (x, z) => { player.pos.set(x, world.surfaceY(Math.floor(x), Math.floor(z)) + 0.3, z); };
 window.__NET = () => net;
 window.__W = () => world;
+window.__VILL = () => ({ list: villagers?.list, stations: villagers ? [...villagers.stations.entries()] : [], storage, views: villView?.views.size });
+window.__ORDER = (vid, k) => hostOrder('local', vid, k);
+window.__MENU = (vid) => villagers?.menu(vid);
+window.__COLLECT = () => collectStorage('local');
+window.__CRAFT = (id) => { const r = RECIPES.find((x) => x.id === id); if (r) tryCraft(r); };
 window.__PLACE = (x, y, z, res) => {
   if ((player.inv[res] || 0) <= 0) return 'no ' + res;
   player.inv[res]--;
